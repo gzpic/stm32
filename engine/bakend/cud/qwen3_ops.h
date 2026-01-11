@@ -28,6 +28,7 @@ struct RmsQkvParams {
     const half* weight;   // [H, 3*H]
     const half* rms_gamma; // [H]
     half* qkv;            // [B, T, 3*H]
+    half* rms_out;        // [B, T, H] (workspace)
     float epsilon;
     int32_t batch;
     int32_t tokens;
@@ -38,6 +39,8 @@ struct RopeParams {
     float rope_theta;
     int32_t head_dim;
     int32_t max_seq_len;
+    const float* cos_table; // [max_seq_len, head_dim / 2]
+    const float* sin_table; // [max_seq_len, head_dim / 2]
 };
 
 struct QkNormRopeParams {
@@ -72,6 +75,9 @@ struct KvCacheParams {
     int32_t max_seq_len;
     int32_t num_heads;
     int32_t head_dim;
+    int32_t stride_tokens; // elements between tokens
+    int32_t stride_heads;  // elements between heads
+    int32_t stride_batch;  // elements between batches
 };
 
 struct AttentionParams {
@@ -89,10 +95,13 @@ struct AttentionParams {
 
 struct FfnParams {
     const half* input;    // [B, T, H]
-    const half* w_gate;   // [H, I]
-    const half* w_up;     // [H, I]
+    const half* w_gate;   // [H, I] (optional if packed_w1 provided)
+    const half* w_up;     // [H, I] (optional if packed_w1 provided)
     const half* w_down;   // [I, H]
+    const half* packed_w1; // [H, 2*I], packed gate+up
     half* output;         // [B, T, H]
+    void* workspace;      // workspace buffer
+    size_t workspace_bytes;
     int32_t batch;
     int32_t tokens;
     int32_t hidden;
@@ -101,7 +110,10 @@ struct FfnParams {
 
 cudaError_t embedding_forward(const EmbeddingParams& params, Stage stage, cudaStream_t stream);
 
-cudaError_t rms_qkv_forward(const RmsQkvParams& params, Stage stage, cudaStream_t stream);
+cudaError_t rms_qkv_forward(const RmsQkvParams& params,
+                            Stage stage,
+                            cudaStream_t stream,
+                            cublasHandle_t cublas);
 
 cudaError_t qk_norm_rope_forward(const QkNormRopeParams& params, Stage stage, cudaStream_t stream);
 
@@ -113,6 +125,16 @@ cudaError_t attention_forward_flash_v2(const AttentionParams& params,
                                        Stage stage,
                                        cudaStream_t stream);
 
-cudaError_t ffn_swiglu_forward(const FfnParams& params, Stage stage, cudaStream_t stream, cublasHandle_t cublas);
+cudaError_t ffn_pack_w1(const half* w_gate,
+                        const half* w_up,
+                        half* packed_w1,
+                        int32_t hidden,
+                        int32_t intermediate,
+                        cudaStream_t stream);
+
+cudaError_t ffn_swiglu_forward(const FfnParams& params,
+                              Stage stage,
+                              cudaStream_t stream,
+                              cublasHandle_t cublas);
 
 } // namespace qwen3

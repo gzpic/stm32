@@ -60,15 +60,14 @@ __global__ void embedding_decode_kernel(const int32_t* input_ids,
     output[hidden_idx] = token_embedding[hidden_idx];
 }
 
-__global__ void rms_qkv_prefill_kernel(const half* input,
-                                       const half* weight,
-                                       const half* gamma,
-                                       half* qkv,
-                                       float epsilon,
-                                       int32_t hidden,
-                                       int32_t out_hidden) {
+__global__ void rmsnorm_kernel(const half* input,
+                               const half* gamma,
+                               half* output,
+                               float epsilon,
+                               int32_t hidden) {
     int32_t row = blockIdx.x;
     const half* row_input = input + static_cast<int64_t>(row) * hidden;
+    half* row_output = output + static_cast<int64_t>(row) * hidden;
     float local_sum = 0.0f;
     for (int i = threadIdx.x; i < hidden; i += blockDim.x) {
         float val = __half2float(row_input[i]);
@@ -81,28 +80,11 @@ __global__ void rms_qkv_prefill_kernel(const half* input,
     }
     __syncthreads();
 
-    for (int out_col = blockIdx.y * blockDim.x + threadIdx.x; out_col < out_hidden; out_col += gridDim.y * blockDim.x) {
-        float acc = 0.0f;
-        for (int k = 0; k < hidden; ++k) {
-            float x = __half2float(row_input[k]);
-            float normed = x * inv_rms * __half2float(gamma[k]);
-            float w = __half2float(weight[k * out_hidden + out_col]);
-            acc += normed * w;
-        }
-        qkv[row * out_hidden + out_col] = __float2half(acc);
+    for (int i = threadIdx.x; i < hidden; i += blockDim.x) {
+        float x = __half2float(row_input[i]);
+        float normed = x * inv_rms * __half2float(gamma[i]);
+        row_output[i] = __float2half(normed);
     }
-}
-
-__device__ __forceinline__ void apply_rope(float& x0, float& x1, float theta, int position, int idx, int head_dim) {
-    float freq = powf(theta, -static_cast<float>(2 * idx) / static_cast<float>(head_dim));
-    float angle = static_cast<float>(position) * freq;
-    float sin_val;
-    float cos_val;
-    sincosf(angle, &sin_val, &cos_val);
-    float rot0 = x0 * cos_val - x1 * sin_val;
-    float rot1 = x0 * sin_val + x1 * cos_val;
-    x0 = rot0;
-    x1 = rot1;
 }
 
 __global__ void qk_norm_rope_kernel(const half* input,
@@ -113,7 +95,8 @@ __global__ void qk_norm_rope_kernel(const half* input,
                                     int32_t head_dim,
                                     int32_t tokens_per_batch,
                                     int32_t seq_pos,
-                                    float rope_theta) {
+                                    const float* cos_table,
+                                    const float* sin_table) {
     int32_t token = blockIdx.x;
     int32_t head = blockIdx.y;
     int32_t offset = (token * num_heads + head) * head_dim;
@@ -132,24 +115,24 @@ __global__ void qk_norm_rope_kernel(const half* input,
     }
     __syncthreads();
 
-    for (int i = threadIdx.x; i < head_dim; i += blockDim.x) {
-        float val = __half2float(head_input[i]);
-        float normed = val * inv_rms * __half2float(gamma[head * head_dim + i]);
-        head_output[i] = __float2half(normed);
-    }
-    __syncthreads();
-
     int32_t position = tokens_per_batch > 1 ? (token % tokens_per_batch) : seq_pos;
-    for (int i = threadIdx.x; i < head_dim; i += blockDim.x * 2) {
-        int idx = i;
-        int pair = idx + head_dim / 2;
-        if (pair < head_dim) {
-            float x0 = __half2float(head_output[idx]);
-            float x1 = __half2float(head_output[pair]);
-            apply_rope(x0, x1, rope_theta, position, idx, head_dim);
-            head_output[idx] = __float2half(x0);
-            head_output[pair] = __float2half(x1);
-        }
+    int32_t half_dim = head_dim / 2;
+    const float* cos_row = cos_table + position * half_dim;
+    const float* sin_row = sin_table + position * half_dim;
+
+    for (int i = threadIdx.x; i < half_dim; i += blockDim.x) {
+        int idx0 = i;
+        int idx1 = i + half_dim;
+        float val0 = __half2float(head_input[idx0]);
+        float val1 = __half2float(head_input[idx1]);
+        float norm0 = val0 * inv_rms * __half2float(gamma[head * head_dim + idx0]);
+        float norm1 = val1 * inv_rms * __half2float(gamma[head * head_dim + idx1]);
+        float cos_val = cos_row[i];
+        float sin_val = sin_row[i];
+        float rot0 = norm0 * cos_val - norm1 * sin_val;
+        float rot1 = norm0 * sin_val + norm1 * cos_val;
+        head_output[idx0] = __float2half(rot0);
+        head_output[idx1] = __float2half(rot1);
     }
 }
 
@@ -163,8 +146,11 @@ __global__ void k_norm_rope_kvcache_kernel(const half* key_input,
                                            float epsilon,
                                            int32_t num_heads,
                                            int32_t head_dim,
-                                           int32_t max_seq,
-                                           float rope_theta) {
+                                           int32_t stride_tokens,
+                                           int32_t stride_heads,
+                                           int32_t stride_batch,
+                                           const float* cos_table,
+                                           const float* sin_table) {
     int32_t batch = blockIdx.x / num_heads;
     int32_t head = blockIdx.x % num_heads;
     int32_t offset = (batch * num_heads + head) * head_dim;
@@ -184,32 +170,45 @@ __global__ void k_norm_rope_kvcache_kernel(const half* key_input,
     }
     __syncthreads();
 
-    for (int i = threadIdx.x; i < head_dim; i += blockDim.x) {
-        float val = __half2float(head_input[i]);
-        float normed = val * inv_rms * __half2float(gamma[head * head_dim + i]);
-        head_output[i] = __float2half(normed);
+    int32_t half_dim = head_dim / 2;
+    const float* cos_row = cos_table + seq_pos * half_dim;
+    const float* sin_row = sin_table + seq_pos * half_dim;
+
+    for (int i = threadIdx.x; i < half_dim; i += blockDim.x) {
+        int idx0 = i;
+        int idx1 = i + half_dim;
+        float val0 = __half2float(head_input[idx0]);
+        float val1 = __half2float(head_input[idx1]);
+        float norm0 = val0 * inv_rms * __half2float(gamma[head * head_dim + idx0]);
+        float norm1 = val1 * inv_rms * __half2float(gamma[head * head_dim + idx1]);
+        float cos_val = cos_row[i];
+        float sin_val = sin_row[i];
+        float rot0 = norm0 * cos_val - norm1 * sin_val;
+        float rot1 = norm0 * sin_val + norm1 * cos_val;
+        head_output[idx0] = __float2half(rot0);
+        head_output[idx1] = __float2half(rot1);
     }
     __syncthreads();
 
-    for (int i = threadIdx.x; i < head_dim; i += blockDim.x * 2) {
-        int idx = i;
-        int pair = idx + head_dim / 2;
-        if (pair < head_dim) {
-            float x0 = __half2float(head_output[idx]);
-            float x1 = __half2float(head_output[pair]);
-            apply_rope(x0, x1, rope_theta, seq_pos, idx, head_dim);
-            head_output[idx] = __float2half(x0);
-            head_output[pair] = __float2half(x1);
-        }
-    }
-    __syncthreads();
-
-    int64_t cache_offset = (static_cast<int64_t>(batch) * num_heads + head) * max_seq * head_dim + static_cast<int64_t>(seq_pos) * head_dim;
+    int64_t cache_offset = static_cast<int64_t>(batch) * stride_batch +
+                           static_cast<int64_t>(head) * stride_heads +
+                           static_cast<int64_t>(seq_pos) * stride_tokens;
     half* key_cache_ptr = key_cache + cache_offset;
     half* value_cache_ptr = value_cache + cache_offset;
-    for (int i = threadIdx.x; i < head_dim; i += blockDim.x) {
-        key_cache_ptr[i] = head_output[i];
-        value_cache_ptr[i] = head_value[i];
+
+    int32_t vec_elems = head_dim / 2;
+    const half2* key_out_vec = reinterpret_cast<const half2*>(head_output);
+    const half2* val_vec = reinterpret_cast<const half2*>(head_value);
+    half2* key_cache_vec = reinterpret_cast<half2*>(key_cache_ptr);
+    half2* value_cache_vec = reinterpret_cast<half2*>(value_cache_ptr);
+    for (int i = threadIdx.x; i < vec_elems; i += blockDim.x) {
+        key_cache_vec[i] = key_out_vec[i];
+        value_cache_vec[i] = val_vec[i];
+    }
+    if ((head_dim % 2) != 0 && threadIdx.x == 0) {
+        int32_t last = head_dim - 1;
+        key_cache_ptr[last] = head_output[last];
+        value_cache_ptr[last] = head_value[last];
     }
 }
 
@@ -268,19 +267,46 @@ cudaError_t embedding_forward(const EmbeddingParams& params, Stage stage, cudaSt
     return cudaGetLastError();
 }
 
-cudaError_t rms_qkv_forward(const RmsQkvParams& params, Stage stage, cudaStream_t stream) {
+cudaError_t rms_qkv_forward(const RmsQkvParams& params,
+                            Stage stage,
+                            cudaStream_t stream,
+                            cublasHandle_t cublas) {
     int32_t rows = params.batch * params.tokens;
     int32_t out_hidden = params.hidden * 3;
-    dim3 block(128);
-    dim3 grid(rows, 4);
-    rms_qkv_prefill_kernel<<<grid, block, 0, stream>>>(
+    dim3 block(256);
+    dim3 grid(rows);
+    rmsnorm_kernel<<<grid, block, 0, stream>>>(
         params.input,
-        params.weight,
         params.rms_gamma,
-        params.qkv,
+        params.rms_out,
         params.epsilon,
-        params.hidden,
-        out_hidden);
+        params.hidden);
+
+    cublasSetStream(cublas, stream);
+    const half alpha = __float2half(1.0f);
+    const half beta = __float2half(0.0f);
+
+    // Row-major C = A * B with A=[rows, hidden], B=[hidden, out_hidden]
+    // Compute C^T = B^T * A^T in column-major.
+    cublasGemmEx(cublas,
+                CUBLAS_OP_N,
+                CUBLAS_OP_N,
+                out_hidden,
+                rows,
+                params.hidden,
+                &alpha,
+                params.weight,
+                CUDA_R_16F,
+                out_hidden,
+                params.rms_out,
+                CUDA_R_16F,
+                params.hidden,
+                &beta,
+                params.qkv,
+                CUDA_R_16F,
+                out_hidden,
+                CUDA_R_32F,
+                CUBLAS_GEMM_DEFAULT_TENSOR_OP);
     (void)stage;
     return cudaGetLastError();
 }
@@ -298,7 +324,8 @@ cudaError_t qk_norm_rope_forward(const QkNormRopeParams& params, Stage stage, cu
         params.rope.head_dim,
         params.tokens,
         params.seq_pos,
-        params.rope.rope_theta);
+        params.rope.cos_table,
+        params.rope.sin_table);
     (void)stage;
     return cudaGetLastError();
 }
@@ -319,8 +346,11 @@ cudaError_t k_norm_rope_kvcache_decode(const KNormRopeCacheParams& params,
         params.epsilon,
         params.num_heads,
         params.head_dim,
-        cache.max_seq_len,
-        params.rope.rope_theta);
+        cache.stride_tokens,
+        cache.stride_heads,
+        cache.stride_batch,
+        params.rope.cos_table,
+        params.rope.sin_table);
     return cudaGetLastError();
 }
 
@@ -338,22 +368,38 @@ cudaError_t attention_forward_flash_v2(const AttentionParams& params,
 #endif
 }
 
-cudaError_t ffn_swiglu_forward(const FfnParams& params, Stage stage, cudaStream_t stream, cublasHandle_t cublas) {
+cudaError_t ffn_pack_w1(const half* w_gate,
+                        const half* w_up,
+                        half* packed_w1,
+                        int32_t hidden,
+                        int32_t intermediate,
+                        cudaStream_t stream) {
+    int threads = 256;
+    int blocks = (hidden * intermediate + threads - 1) / threads;
+    pack_gate_up_kernel<<<blocks, threads, 0, stream>>>(
+        w_gate,
+        w_up,
+        packed_w1,
+        hidden,
+        intermediate);
+    return cudaGetLastError();
+}
+
+cudaError_t ffn_swiglu_forward(const FfnParams& params,
+                              Stage stage,
+                              cudaStream_t stream,
+                              cublasHandle_t cublas) {
     int32_t rows = params.batch * params.tokens;
     int32_t cols = params.intermediate;
-    half* gate_up = nullptr;
-    cudaMalloc(&gate_up, sizeof(half) * rows * cols * 2);
-
-    half* packed_weights = nullptr;
-    cudaMalloc(&packed_weights, sizeof(half) * params.hidden * cols * 2);
-    int pack_threads = 256;
-    int pack_blocks = (params.hidden * cols + pack_threads - 1) / pack_threads;
-    pack_gate_up_kernel<<<pack_blocks, pack_threads, 0, stream>>>(
-        params.w_gate,
-        params.w_up,
-        packed_weights,
-        params.hidden,
-        cols);
+    if (params.workspace == nullptr || params.workspace_bytes < sizeof(half) * rows * cols * 3) {
+        return cudaErrorInvalidValue;
+    }
+    if (params.packed_w1 == nullptr) {
+        return cudaErrorInvalidValue;
+    }
+    auto* workspace_ptr = reinterpret_cast<half*>(params.workspace);
+    half* gate_up = workspace_ptr;
+    half* hidden = gate_up + rows * cols * 2;
 
     cublasSetStream(cublas, stream);
     const half alpha = __float2half(1.0f);
@@ -366,7 +412,7 @@ cudaError_t ffn_swiglu_forward(const FfnParams& params, Stage stage, cudaStream_
                 rows,
                 params.hidden,
                 &alpha,
-                packed_weights,
+                params.packed_w1,
                 CUDA_R_16F,
                 cols * 2,
                 params.input,
@@ -379,8 +425,6 @@ cudaError_t ffn_swiglu_forward(const FfnParams& params, Stage stage, cudaStream_
                 CUDA_R_32F,
                 CUBLAS_GEMM_DEFAULT_TENSOR_OP);
 
-    half* hidden = nullptr;
-    cudaMalloc(&hidden, sizeof(half) * rows * cols);
     int threads = 256;
     int blocks = (rows * cols + threads - 1) / threads;
     swiglu_kernel<<<blocks, threads, 0, stream>>>(gate_up, hidden, rows, cols);
@@ -404,10 +448,6 @@ cudaError_t ffn_swiglu_forward(const FfnParams& params, Stage stage, cudaStream_
                 params.hidden,
                 CUDA_R_32F,
                 CUBLAS_GEMM_DEFAULT_TENSOR_OP);
-
-    cudaFree(gate_up);
-    cudaFree(hidden);
-    cudaFree(packed_weights);
     (void)stage;
     return cudaGetLastError();
 }
