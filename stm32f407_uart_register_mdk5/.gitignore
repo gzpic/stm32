@@ -1,0 +1,14 @@
+Output/
+Listings/
+Objects/
+*.bak
+*.dep
+*.d
+*.o
+*.axf
+*.hex
+*.htm
+*.lnp
+*.map
+*.sct
+*.uvguix.*
