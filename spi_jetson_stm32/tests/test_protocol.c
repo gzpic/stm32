@@ -42,9 +42,13 @@ static void test_dispatch(void)
     /* Read completion must preserve the custom registry. */
     service_transaction(&service, frame, size, 0);
     assert(calls == 2);
+    service_transaction(&service, dummy, sizeof dummy, 0);
+    assert(!service.pending);
     frame[size - 1] = 0;
     service_transaction(&service, frame, size, 0);
     assert(calls == 2 && service.tx[1] == COMMAND_BAD_FRAME);
+    service_transaction(&service, dummy, sizeof dummy, 0);
+    assert(!service.pending);
     size = proto_write(frame, sizeof frame, 0x42, 0x07, NULL, 0);
     frame[5] ^= 1;
     service_transaction(&service, frame, size, 0);
@@ -55,6 +59,8 @@ static void test_dispatch(void)
     size = proto_write(frame, sizeof frame, 0x43, 0x07, NULL, 0);
     service_transaction(&service, frame, size, 0);
     assert(calls == 2 && service.tx[1] == COMMAND_NOT_FOUND);
+    service_transaction(&service, dummy, sizeof dummy, 0);
+    assert(!service.pending);
     size = proto_write(frame, sizeof frame, 0x42, 0x07, NULL, 0);
     service_transaction(&service, frame, size, 1);
     assert(calls == 2 && service.tx[1] == COMMAND_BAD_FRAME);
