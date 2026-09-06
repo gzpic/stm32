@@ -10,6 +10,8 @@
 
 需求边界见 [项目需求说明](REQUIREMENTS.md)，线上字段见 [协议文档](PROTOCOL.md)，代码入口和依赖方向见 [代码目录与模块结构](CODE_STRUCTURE.md)。
 
+第一次接触 SPI 主从配置时，先阅读 [SPI 主从入门笔记](docs/BEGINNER_SPI_NOTES.md)。
+
 ## 软件测试
 
 在本目录执行 `make test`，可在 macOS/Linux 上测试共享协议和业务状态转换。

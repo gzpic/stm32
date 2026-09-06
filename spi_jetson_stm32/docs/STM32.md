@@ -2,6 +2,8 @@
 
 本目录实现 STM32F407 的 SPI1 从机通信层。它负责通过 DMA 接收 Jetson 写命令，在 CS 上升沿保存一份稳定的事务快照，并在主循环中交给共享协议层解析和执行。协议格式和业务命令本身位于 `../common`。
 
+面向初学者的 GPIO、SPI、DMA 和中断配置顺序见 [SPI 主从入门笔记](BEGINNER_SPI_NOTES.md)。
+
 主从之间的完整交互先看 [主从总体说明](MASTER_SLAVE.md)；Jetson 侧操作见 [Jetson 主机说明](JETSON.md)。
 
 ## 文件职责
