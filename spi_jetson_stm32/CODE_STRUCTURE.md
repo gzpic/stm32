@@ -15,6 +15,11 @@ spi_jetson_stm32/
 ├── VALIDATION.md             # 已执行与待执行的验证记录
 ├── Makefile                  # Jetson 程序和主机协议测试构建入口
 │
+├── docs/                     # 三份并列的核心说明
+│   ├── MASTER_SLAVE.md       # 主从系统总体说明
+│   ├── STM32.md              # STM32 从机说明
+│   └── JETSON.md             # Jetson 主机说明
+│
 ├── common/                   # 与操作系统、MCU 外设无关的共享代码
 │   ├── protocol.h            # 帧常量、请求视图和编解码接口
 │   ├── protocol.c            # 写帧/返回帧编解码及 CRC16
@@ -24,14 +29,14 @@ spi_jetson_stm32/
 │   └── commands.c            # CMDID/SUBCMDID 查表及示例回调
 │
 ├── stm32/                    # STM32F407 从机专用代码
-│   ├── README.md             # 从机硬件、执行流程、构建和扩展说明
+│   ├── README.md             # 指向 docs/STM32.md 的代码目录入口
 │   ├── main.c                # 固件入口和非阻塞后台轮询
 │   ├── spi_slave.h           # SPI 从机通信层公开接口
 │   ├── spi_slave.c           # SPI1、DMA、CS 上升沿中断和命令 buffer
 │   └── spi_slave.uvprojx     # 可直接打开的 Keil MDK 工程
 │
 ├── jetson/                   # Jetson Orin Nano 主机专用代码
-│   ├── README.md             # 主机构建、使用、返回码和联调说明
+│   ├── README.md             # 指向 docs/JETSON.md 的代码目录入口
 │   ├── main.c                # spidev 配置、写事务、等待、读事务及校验
 │   └── parse_number.h        # 命令行十进制/十六进制参数解析
 │

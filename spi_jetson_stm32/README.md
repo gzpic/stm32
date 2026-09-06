@@ -1,6 +1,14 @@
 # Jetson Orin Nano / STM32F407 SPI 新项目
 
-先阅读 [项目需求说明](REQUIREMENTS.md)，了解已确认需求、当前实现约定及验收范围。开发时可从 [代码目录与模块结构](CODE_STRUCTURE.md) 定位入口和修改位置，再查看 [协议文档](PROTOCOL.md)。本版包含协议编解码、示例回显业务、Linux 主机命令行程序和 STM32F407 SPI1 DMA 从机。
+三份核心说明并列放在 `docs/`：
+
+| 文档 | 内容 |
+|---|---|
+| [主从总体说明](docs/MASTER_SLAVE.md) | 系统角色、接线、两次 SPI 时序、帧概览和主从协作 |
+| [STM32 从机说明](docs/STM32.md) | 固件文件、硬件资源、中断/后台流程、Keil 构建和命令扩展 |
+| [Jetson 主机说明](docs/JETSON.md) | Linux 编译、spidev 使用、参数、返回码和联调方法 |
+
+需求边界见 [项目需求说明](REQUIREMENTS.md)，线上字段见 [协议文档](PROTOCOL.md)，代码入口和依赖方向见 [代码目录与模块结构](CODE_STRUCTURE.md)。
 
 ## 软件测试
 
@@ -8,7 +16,7 @@
 
 ## Jetson 主机
 
-主机端文件和执行流程见 [Jetson 代码说明](jetson/README.md)。
+主机端文件和执行流程见 [Jetson 主机说明](docs/JETSON.md)。
 
 目标系统需提供 C 编译器和 Linux SPI 开发头文件。在 Jetson 上本目录执行：
 
@@ -23,7 +31,7 @@ make
 
 ## STM32 从机
 
-从机端文件、硬件资源和后台处理流程见 [STM32 代码说明](stm32/README.md)。
+从机端文件、硬件资源和后台处理流程见 [STM32 从机说明](docs/STM32.md)。
 
 打开 `stm32/spi_slave.uvprojx`，在 Keil MDK 中编译和下载。所需 HAL、CMSIS 和原例程系统依赖已随项目放入 `vendor/hal_example`，工程使用项目内部相对路径，可以整体移动。没有复制历史 HEX 作为新固件。
 
