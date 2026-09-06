@@ -20,14 +20,15 @@ void service_transaction(spi_service *service, const uint8_t *rx, size_t size,
     proto_request request;
     command_response response;
     uint8_t data[PROTO_REPLY_DATA] = {0};
-    /* Any new write supersedes an unread response, including after host restart. */
-    if (service->pending && (!size || !rx || rx[0] != 0x30)) {
+    int valid_write = !transport_error && proto_parse_write(rx, size, &request);
+    /* Any valid new write supersedes an unread response, including after host restart. */
+    if (service->pending && !valid_write) {
         /* Good or aborted read: response is consumed; never replay business. */
         service->pending = 0;
         memset(service->tx, 0xff, sizeof service->tx);
         return;
     }
-    if (transport_error || !proto_parse_write(rx, size, &request)) {
+    if (!valid_write) {
         data[0] = COMMAND_BAD_FRAME;
     } else {
         command_dispatch(service->groups, service->group_count, &request, &response);

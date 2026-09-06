@@ -85,6 +85,32 @@ static void test_response_status(void)
     assert(!proto_parse_reply(service.tx, PROTO_REPLY_SIZE, PROTO_REPLY_DATA));
 }
 
+static void test_pending_response_classification(void)
+{
+    spi_service service;
+    uint8_t frame[PROTO_REPLY_SIZE];
+    size_t size;
+
+    service_init(&service);
+    size = proto_write(frame, sizeof frame, 1, 0, NULL, 0);
+    service_transaction(&service, frame, size, 0);
+    assert(service.pending);
+
+    /* An invalid read that happens to start with 0x30 must consume the reply. */
+    memset(frame, 0xff, PROTO_REPLY_SIZE);
+    frame[0] = 0x30;
+    service_transaction(&service, frame, PROTO_REPLY_SIZE, 0);
+    assert(!service.pending && service.tx[0] == 0xff);
+
+    /* A fully valid write still supersedes an unread response. */
+    size = proto_write(frame, sizeof frame, 99, 0, NULL, 0);
+    service_transaction(&service, frame, size, 0);
+    assert(service.pending && service.tx[1] == COMMAND_NOT_FOUND);
+    size = proto_write(frame, sizeof frame, 1, 0, NULL, 0);
+    service_transaction(&service, frame, size, 0);
+    assert(service.pending && service.tx[1] == COMMAND_OK);
+}
+
 int main(void)
 {
     uint8_t frame[PROTO_MAX_FRAME + 1], copy[PROTO_MAX_FRAME + 1];
@@ -105,6 +131,7 @@ int main(void)
     assert(!number("", 255, &value));
     test_dispatch();
     test_response_status();
+    test_pending_response_classification();
     assert(proto_crc16((const uint8_t *)"123456789", 9) == 0x4b37);
     assert(proto_crc16(NULL, 0) == 0xffff);
     for (i = 0; i < sizeof payload; ++i) payload[i] = (uint8_t)i;
