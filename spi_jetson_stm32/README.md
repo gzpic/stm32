@@ -8,6 +8,8 @@
 
 ## Jetson 主机
 
+主机端文件和执行流程见 [Jetson 代码说明](jetson/README.md)。
+
 目标系统需提供 C 编译器和 Linux SPI 开发头文件。在 Jetson 上本目录执行：
 
 ```sh
@@ -20,6 +22,8 @@ make
 响应为 `60 STATUS RESULT[31] CRC_LO CRC_HI 0A`，共 36 字节。回调先填返回数据，最后填执行状态，后台随后计算 CRC；具体字段与状态码见协议文档。不同长度的业务响应尚未约定。单次写操作失败时执行状态可能不确定，程序不自动重试。
 
 ## STM32 从机
+
+从机端文件、硬件资源和后台处理流程见 [STM32 代码说明](stm32/README.md)。
 
 打开 `stm32/spi_slave.uvprojx`，在 Keil MDK 中编译和下载。所需 HAL、CMSIS 和原例程系统依赖已随项目放入 `vendor/hal_example`，工程使用项目内部相对路径，可以整体移动。没有复制历史 HEX 作为新固件。
 

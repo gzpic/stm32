@@ -24,12 +24,14 @@ spi_jetson_stm32/
 │   └── commands.c            # CMDID/SUBCMDID 查表及示例回调
 │
 ├── stm32/                    # STM32F407 从机专用代码
+│   ├── README.md             # 从机硬件、执行流程、构建和扩展说明
 │   ├── main.c                # 固件入口和非阻塞后台轮询
 │   ├── spi_slave.h           # SPI 从机通信层公开接口
 │   ├── spi_slave.c           # SPI1、DMA、CS 上升沿中断和命令 buffer
 │   └── spi_slave.uvprojx     # 可直接打开的 Keil MDK 工程
 │
 ├── jetson/                   # Jetson Orin Nano 主机专用代码
+│   ├── README.md             # 主机构建、使用、返回码和联调说明
 │   ├── main.c                # spidev 配置、写事务、等待、读事务及校验
 │   └── parse_number.h        # 命令行十进制/十六进制参数解析
 │
