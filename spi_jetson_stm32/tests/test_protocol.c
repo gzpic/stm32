@@ -37,12 +37,11 @@ static void oversized_callback(const proto_request *request, command_response *r
 
 static proto_response parse_service_reply(const spi_service *service)
 {
-    uint8_t clocked[PROTO_REPLY_CLOCKS];
     proto_response response;
-    assert(service->tx_size >= PROTO_REPLY_OVERHEAD && service->tx_size <= sizeof clocked);
-    memset(clocked, 0xff, sizeof clocked);
-    memcpy(clocked, service->tx, service->tx_size);
-    assert(proto_parse_reply(clocked, sizeof clocked, &response));
+    assert(service->tx_size >= PROTO_REPLY_OVERHEAD &&
+           service->tx_size <= PROTO_REPLY_CLOCKS);
+    /* Keep response.data backed by service->tx after this helper returns. */
+    assert(proto_parse_reply(service->tx, service->tx_size, &response));
     assert(response.frame_size == service->tx_size);
     return response;
 }
