@@ -11,11 +11,12 @@ enum {
 };
 typedef struct {
     uint8_t status;
-    uint8_t data[PROTO_REPLY_DATA - 1];
+    uint8_t data[PROTO_MAX_REPLY_DATA];
+    size_t size;
 } command_response;
-/* Background only. Data starts zeroed; status defaults to execution failed.
+/* Background only. Data starts zeroed, size=0; status defaults to execution failed.
    Request data is valid only until this callback returns. Do not retain it.
-   Write response->status LAST on every exit path, after filling response->data.
+   Fill data and size, then write response->status LAST on every exit path.
    Callbacks must respect sizeof response->data and the SPI timing budget. */
 typedef void (*command_callback)(const proto_request *request,
                                  command_response *response, void *context);

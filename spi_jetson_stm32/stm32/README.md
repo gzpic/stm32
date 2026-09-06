@@ -32,7 +32,7 @@ Keil 工程还会编译 `../common` 中的协议、服务和命令代码，并�
 2. Jetson 拉低 CS 并发送完整写命令，DMA 自动把 MOSI 字节写入接收数组。
 3. CS 上升沿进入 `EXTI4_IRQHandler()`；中断停止 DMA，记录实际长度和硬件错误，将数据复制到单帧 `command_buffer`，发布 `ready` 后立即退出。
 4. 主循环中的 `spi_slave_poll()` 发现 `ready`，调用 `service_transaction()` 完成格式、长度和 CRC 校验，再按 CMDID/SUBCMDID 执行回调。
-5. 回调先填写返回数据，最后填写执行状态。协议层生成以 `0x60` 开始的固定 36 字节返回帧，并重新装载发送 DMA。
+5. 回调填写返回数据和实际长度，最后填写执行状态。协议层生成以 `0x60` 开始的变长返回帧，并重新装载发送 DMA；逻辑帧之后保持 `0xFF` 填充。
 6. Jetson 第二次拉低 CS 产生时钟并读取响应。读事务结束后，从机恢复下一条写命令的接收状态。
 
 中断不计算 CRC、不查命令表、不执行业务。当前是单帧邮箱设计；后台处理期间到来的额外事务不会覆盖当前命令，只增加 `spi_slave_dropped_transactions`。DMA 无法在限定次数内停止时增加 `spi_slave_dma_stop_faults`，并拒绝执行不完整命令。这两个全局计数可在调试器中观察。
@@ -53,7 +53,7 @@ python3 tools/generate_keil.py
 
 ## 添加业务命令
 
-一般不需要修改 `spi_slave.c`。在 `../common/commands.c` 中增加回调并注册 CMDID/SUBCMDID。回调必须在所有退出路径最后填写 `response->status`，返回数据不得超过 31 字节，也不得保存请求/响应指针供回调结束后使用。
+一般不需要修改 `spi_slave.c`。在 `../common/commands.c` 中增加回调并注册 CMDID/SUBCMDID。回调先填写 `response->data` 和 `response->size`，必须在所有退出路径最后填写 `response->status`；返回数据不得超过 251 字节，也不得保存请求/响应指针供回调结束后使用。
 
 当前没有 READY 握手引脚，Jetson 两次事务之间暂定至少等待 10 ms。因此回调不能长期阻塞；需要耗时操作时，应先扩展 READY/完成通知或异步任务协议。
 

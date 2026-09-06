@@ -62,7 +62,8 @@ int proto_parse_write(const uint8_t *frame, size_t size, proto_request *request)
 size_t proto_reply(uint8_t *out, size_t capacity, const uint8_t *data, size_t size)
 {
     size_t total;
-    if (!out || (size && !data) || size > PROTO_MAX_FRAME - 4) return 0;
+    /* data[0] is mandatory STATUS; following bytes are callback result data. */
+    if (!out || !data || size < 1 || size > PROTO_MAX_FRAME - 4) return 0;
     total = size + 4;
     if (capacity < total) return 0;
     out[0] = PROTO_REPLY_HEAD;
@@ -71,8 +72,25 @@ size_t proto_reply(uint8_t *out, size_t capacity, const uint8_t *data, size_t si
     return total;
 }
 
-int proto_parse_reply(const uint8_t *frame, size_t size, size_t expected_data)
+int proto_parse_reply(const uint8_t *buffer, size_t size, proto_response *response)
 {
-    return expected_data <= PROTO_MAX_FRAME - 4 && size == expected_data + 4 &&
-           valid(frame, size, PROTO_REPLY_HEAD);
+    size_t candidate;
+    size_t found = 0;
+    if (!buffer || !response || size < PROTO_REPLY_OVERHEAD ||
+        size > PROTO_REPLY_CLOCKS || buffer[0] != PROTO_REPLY_HEAD) return 0;
+    /* Select the longest valid prefix. Padding is 0xFF, so it cannot introduce
+       another tail; this also ignores an accidental valid-looking prefix in DATA. */
+    for (candidate = PROTO_REPLY_OVERHEAD; candidate <= size; ++candidate) {
+        if (buffer[candidate - 1] == 0x0a &&
+            valid(buffer, candidate, PROTO_REPLY_HEAD)) found = candidate;
+    }
+    if (!found) return 0;
+    for (candidate = found; candidate < size; ++candidate) {
+        if (buffer[candidate] != 0xff) return 0;
+    }
+    response->status = buffer[1];
+    response->data = buffer + 2;
+    response->size = found - PROTO_REPLY_OVERHEAD;
+    response->frame_size = found;
+    return 1;
 }

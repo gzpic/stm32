@@ -1,6 +1,6 @@
 # Jetson Orin Nano 与 STM32F4 SPI 通信项目需求说明
 
-版本：v0.2；整理日期：2026-09-06。最新变更：按用户要求将读返回帧头改为 `0x60`。
+版本：v0.3；整理日期：2026-09-06。最新变更：按用户要求取消固定 36 字节响应，返回数据及逻辑帧长度由回调决定。
 
 本文汇总本项目对话中提出的需求，作为后续开发和验收依据。“明确需求”指用户提出的约束；“当前实现约定”指为完成第一版而补充的设计，不能视为用户已指定的最终参数。本文不新增业务命令或变更当前代码。
 
@@ -51,12 +51,12 @@ SUBCMD 与 SUBCMDID 在现有文件中表示同一个字段。CS 与 NSS 表示�
 ### 3.2 读返回帧
 
 ```text
-0x60 | STATUS | RESULT[31] | CRC_LO CRC_HI | 0x0A
+0x60 | STATUS | RESULT[N] | CRC_LO CRC_HI | 0x0A
 ```
 
-当前响应固定 36 字节：头 1 字节、状态 1 字节、结果 31 字节、CRC 2 字节、尾 1 字节。结果不足 31 字节时补零。CRC 覆盖头、最终状态和全部结果（含补零），不包含 CRC 自身及帧尾。
+响应逻辑长度为 `N + 5` 字节：头 1 字节、状态 1 字节、结果 N 字节、CRC 2 字节、尾 1 字节。N 由回调填写，可以为 0～251；结果不补齐固定长度。CRC 覆盖头、最终状态和实际结果，不包含 CRC 自身及帧尾。
 
-“最后填写状态”是回调的执行顺序，不代表状态必须位于帧尾。当前把 STATUS 放在 HEAD 后：回调先执行业务并填 RESULT，最后填 STATUS；回调返回后，协议层才序列化返回帧并计算 CRC。状态和结果必须来自同一次同步回调。
+“最后填写状态”是回调的执行顺序，不代表状态必须位于帧尾。当前把 STATUS 放在 HEAD 后：回调先执行业务，填写 RESULT 和长度，最后填 STATUS；回调返回后，协议层才序列化返回帧并计算 CRC。状态和结果必须来自同一次同步回调。
 
 | 状态值 | 含义 | 填写责任 |
 |---|---|---|
@@ -94,9 +94,9 @@ Jetson 第二次 SPI：读取返回帧 → 从机恢复下一次接收
 
 命令注册采用两级表：`command_group` 保存 CMDID 和组内条目，`command_entry` 保存 SUBCMDID、回调和上下文。同一 `(CMDID, SUBCMDID)` 应唯一。
 
-回调签名为 `void callback(const proto_request *request, command_response *response, void *context)`。回调只能访问本次请求，不得保留请求或响应指针供返回后使用；输出不得超过 `response->data` 容量；每条退出路径最后填写 `response->status`。同步回调返回后不能异步修改响应。
+回调签名为 `void callback(const proto_request *request, command_response *response, void *context)`。回调只能访问本次请求，不得保留请求或响应指针供返回后使用；先填写 `response->data` 和实际 `response->size`，输出不得超过 251 字节；每条退出路径最后填写 `response->status`。同步回调返回后不能异步修改响应。
 
-当前只提供 `CMDID=0x01、SUBCMDID=0x00` 回显示例：最多回显 31 字节，超长参数报错。具体控制、采集等业务命令尚未定义，不属于已完成的业务范围。
+当前只提供 `CMDID=0x01、SUBCMDID=0x00` 回显示例，按请求 DATA 的实际长度返回。具体控制、采集等业务命令尚未定义，不属于已完成的业务范围。
 
 ## 6. 暂定参数与待确认事项
 
@@ -107,9 +107,9 @@ Jetson 第二次 SPI：读取返回帧 → 从机恢复下一次接收
 | CRC 算法 | CRC16/MODBUS，init=`0xFFFF`，反射多项式 `0xA001`，xorout=0；仅借用校验算法，不采用 Modbus 报文协议 |
 | 多字节字段 | 长度、CRC 均低字节在前 |
 | SPI | Mode 0、8 bit、MSB first、100 kHz、CS 低有效 |
-| 两次操作 | 两个独立片选窗口；读操作 MOSI 发送 `0xFF` 占位，MISO 接收响应 |
+| 两次操作 | 两个独立片选窗口；读操作 MOSI 发送 256 个 `0xFF` 产生最大帧时钟，MISO 返回变长逻辑帧，剩余为 `0xFF` 填充 |
 | 时序 | 主机启动等待 100 ms；事务之间 CS 高电平至少 10 ms |
-| 响应容量 | STATUS 1 字节 + RESULT 31 字节，整帧固定 36 字节 |
+| 响应容量 | STATUS 1 字节 + RESULT 0～251 字节，逻辑帧为 5～256 字节 |
 | 硬件资源 | F407 SPI1，PA4/PA5/PA6/PA7；DMA2 Stream0/3 Channel3；EXTI4 |
 | 缓冲 | 单帧邮箱；DMA 缓冲 257 字节，其中 1 字节用于检测超长，不放在 CCM |
 

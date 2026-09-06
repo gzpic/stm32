@@ -89,9 +89,9 @@ tests/test_protocol.c
 3. STM32 主循环调用 `spi_slave_poll()`，后台取得稳定快照并交给 `service_transaction()`。
 4. `service_transaction()` 调用 `proto_parse_write()` 检查帧头、帧尾、声明长度和 CRC。失败时直接准备协议错误响应，不调用业务回调。
 5. 校验成功后，`command_dispatch()` 先查找 CMDID 命令组，再查找 SUBCMDID 条目并调用回调。
-6. 回调填写 `response->data`，在最后填写 `response->status`。协议层将其组装为 `0x60` 返回帧并计算 CRC，通信层重新装载发送 DMA。
-7. Jetson 等待约定间隔后发起第二次 SPI 事务，MOSI 发送 `0xFF` 占位以产生时钟，同时从 MISO 读取 36 字节响应。
-8. Jetson 使用 `proto_parse_reply()` 检查 `0x60` 帧头、长度、帧尾和 CRC，再读取状态及返回数据。
+6. 回调填写 `response->data` 和 `response->size`，在最后填写 `response->status`。协议层将其组装为变长 `0x60` 返回帧并计算 CRC，通信层重新装载发送 DMA。
+7. Jetson 等待约定间隔后发起第二次 SPI 事务，MOSI 发送 256 个 `0xFF` 以产生足够时钟，同时从 MISO 读取“逻辑响应 + 填充”。
+8. Jetson 使用 `proto_parse_reply()` 从缓冲区找出 CRC 正确的真实帧长度，再读取状态及实际返回数据。
 
 ## 修改位置速查
 

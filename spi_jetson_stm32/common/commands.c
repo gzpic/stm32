@@ -9,6 +9,7 @@ static void echo(const proto_request *request, command_response *response, void 
         status = COMMAND_BAD_ARGUMENT;
     } else if (request->size) {
         memcpy(response->data, request->data, request->size);
+        response->size = request->size;
     }
     response->status = status; /* Final callback action: publish execution status. */
 }
@@ -28,6 +29,7 @@ void command_dispatch(const command_group *groups, size_t count,
     size_t g, c;
     if (!response) return;
     memset(response->data, 0, sizeof response->data);
+    response->size = 0;
     response->status = COMMAND_EXECUTION_FAILED;
     if (!groups || !request) {
         response->status = COMMAND_BAD_ARGUMENT;

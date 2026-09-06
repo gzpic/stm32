@@ -38,6 +38,7 @@ static int transfer(int fd, const uint8_t *tx, uint8_t *rx, size_t size, uint32_
 int main(int argc, char **argv)
 {
     uint8_t payload[PROTO_MAX_DATA], tx[PROTO_MAX_FRAME], rx[PROTO_MAX_FRAME];
+    proto_response response;
     uint8_t mode = SPI_MODE_0, bits = 8, lsb = 0;
     uint32_t hz = 100000;
     unsigned long cmd, sub, value;
@@ -68,17 +69,17 @@ int main(int argc, char **argv)
     pause_ms(100);
     if (!transfer(fd, tx, rx, size, hz)) goto done;
     pause_ms(10);
-    memset(tx, 0xff, PROTO_REPLY_SIZE);
-    if (!transfer(fd, tx, rx, PROTO_REPLY_SIZE, hz)) goto done;
+    memset(tx, 0xff, PROTO_REPLY_CLOCKS);
+    if (!transfer(fd, tx, rx, PROTO_REPLY_CLOCKS, hz)) goto done;
     pause_ms(10);
-    if (!proto_parse_reply(rx, PROTO_REPLY_SIZE, PROTO_REPLY_DATA)) {
+    if (!proto_parse_reply(rx, PROTO_REPLY_CLOCKS, &response)) {
         fprintf(stderr, "Invalid response: header/length/CRC/tail. Write may have executed; no automatic retry.\n");
         goto done;
     }
-    printf("status=%u data:", (unsigned)rx[1]);
-    for (i = 2; i < PROTO_REPLY_SIZE - 3; ++i) printf(" %02X", (unsigned)rx[i]);
+    printf("status=%u data[%zu]:", (unsigned)response.status, response.size);
+    for (i = 0; i < response.size; ++i) printf(" %02X", (unsigned)response.data[i]);
     putchar('\n');
-    result = rx[1] == 0 ? 0 : 3;
+    result = response.status == 0 ? 0 : 3;
 done:
     close(fd);
     return result;

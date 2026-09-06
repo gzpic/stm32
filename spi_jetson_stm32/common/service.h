@@ -5,6 +5,7 @@
 typedef struct {
     int pending;
     uint8_t tx[PROTO_MAX_FRAME + 1];
+    size_t tx_size;
     const command_group *groups;
     size_t group_count;
 } spi_service;
