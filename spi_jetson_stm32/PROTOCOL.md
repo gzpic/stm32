@@ -1,6 +1,8 @@
-# Jetson Orin Nano ↔ STM32F407 SPI 协议 v0.1
+# Jetson Orin Nano ↔ STM32F407 SPI 协议 v0.2
 
 状态：按当前需求形成的可运行联调草案。先制定本文档，再实现代码。
+
+v0.2：读返回帧头改为 `0x60`，主从两端必须一起更新；读操作的 MOSI 占位字节仍为 `0xFF`，帧长度和其余字段不变。
 
 ## 已确定的帧格式
 
@@ -9,7 +11,7 @@
 | 帧 | 字节顺序 | 总长度 |
 |---|---|---|
 | 写：Jetson MOSI → STM32 | `30 CMDID LEN_LO LEN_HI SUBCMD DATA… CRC_LO CRC_HI 0A` | DATA 长度 + 8 |
-| 读：STM32 MISO → Jetson | `FF STATUS RESULT… CRC_LO CRC_HI 0A` | RESULT 长度 + 5 |
+| 读：STM32 MISO → Jetson | `60 STATUS RESULT… CRC_LO CRC_HI 0A` | RESULT 长度 + 5 |
 
 CMDID、SUBCMD 各 1 字节；写帧总长度占 2 字节，包含头、长度字段自身、CRC 和尾。读帧没有 CMDID、长度和 SUBCMD。CRC 紧挨帧尾，占 2 字节。帧中允许任意二进制值，包括 `30`、`FF`、`0A`，不能扫描 `0A` 来确定帧长。
 
@@ -28,7 +30,7 @@ CMDID、SUBCMD 各 1 字节；写帧总长度占 2 字节，包含头、长度�
 
 | 偏移 | 字段 | 字节数 | 说明 |
 |---|---|---|---|
-| 0 | HEAD | 1 | 固定 `0xFF` |
+| 0 | HEAD | 1 | 固定 `0x60` |
 | 1 | STATUS | 1 | 命令执行状态 |
 | 2～32 | RESULT | 31 | 返回数据，不足补零 |
 | 33 | CRC_LO | 1 | CRC 低字节 |

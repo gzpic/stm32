@@ -20,7 +20,7 @@ SPI + DMA 接收
 
 在 `common/commands.c` 增加回调，并在对应组的 `command_entry` 数组中注册 `{subcmdid, callback, context}`。新命令组注册为 `{cmdid, entries, count}`。每个 `(cmdid, subcmdid)` 应唯一；若重复，执行第一个匹配条目。
 
-回调收到解析后的 `proto_request`，其中 `data/size` 为请求载荷。回调类型为 `void callback(const proto_request *, command_response *, void *)`；先写 `response->data`（最多 31 字节，预先补零），最后写 `response->status`。每条退出路径都应填写最终状态；初始状态为执行失败 `0x04`，避免遗漏赋值时误报成功。回调返回后，后台再组装 `FF STATUS RESULT[31] CRC_LO CRC_HI 0A`，CRC 包含最终状态。不得保存请求或响应指针供回调返回后使用，不得越过输出容量。默认已注册 `CMDID=1, SUBCMDID=0` 回显。
+回调收到解析后的 `proto_request`，其中 `data/size` 为请求载荷。回调类型为 `void callback(const proto_request *, command_response *, void *)`；先写 `response->data`（最多 31 字节，预先补零），最后写 `response->status`。每条退出路径都应填写最终状态；初始状态为执行失败 `0x04`，避免遗漏赋值时误报成功。回调返回后，后台再组装 `60 STATUS RESULT[31] CRC_LO CRC_HI 0A`，CRC 包含最终状态。不得保存请求或响应指针供回调返回后使用，不得越过输出容量。默认已注册 `CMDID=1, SUBCMDID=0` 回显。
 
 也可以用 `service_init_commands()` 注入其他静态命令表及上下文，必须在启用通信前初始化；表与上下文生命周期必须覆盖服务运行时间。
 

@@ -21,3 +21,5 @@ ARM 语法检查使用本地 HAL/CMSIS 设备头和 Clang `--target=arm-none-eab
 返回帧更新验证：回调改为最后填写 `command_response.status`。测试确认回调填写的成功状态和数据进入响应、未填写状态时返回 `0x04`、修改状态字节会导致 CRC 校验失败。更新后 `make test` 与 AddressSanitizer/UndefinedBehaviorSanitizer 均通过。没有改变线上帧长度或现有字段偏移，未执行目标固件完整编译和上板联调。
 
 2026-09-06 上传前复查：已将依赖纳入 `vendor/hal_example`，重新生成 Keil 工程并检查引用路径。新增数字解析及合法 CRC/非法声明长度测试通过；内存检查与基于随项目依赖的 Cortex-M4 语法检查通过。详见 `REVIEW.md`。新增 Linux CI 用于在目标操作系统上编译主机程序及持续检查，实际运行结果以 GitHub Actions 为准。
+
+v0.2 帧头变更：返回帧头统一为 `0x60`，共享编码和解码同时更新。`make test` 通过，覆盖新帧头生成及旧 `0xFF` 帧头即使 CRC 正确也被拒绝。MOSI 占位值与空闲发送值仍为 `0xFF`；主从必须同步升级，实际硬件联调状态不变。

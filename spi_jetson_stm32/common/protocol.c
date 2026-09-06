@@ -65,7 +65,7 @@ size_t proto_reply(uint8_t *out, size_t capacity, const uint8_t *data, size_t si
     if (!out || (size && !data) || size > PROTO_MAX_FRAME - 4) return 0;
     total = size + 4;
     if (capacity < total) return 0;
-    out[0] = 0xff;
+    out[0] = PROTO_REPLY_HEAD;
     if (size) memcpy(out + 1, data, size);
     finish(out, total);
     return total;
@@ -74,5 +74,5 @@ size_t proto_reply(uint8_t *out, size_t capacity, const uint8_t *data, size_t si
 int proto_parse_reply(const uint8_t *frame, size_t size, size_t expected_data)
 {
     return expected_data <= PROTO_MAX_FRAME - 4 && size == expected_data + 4 &&
-           valid(frame, size, 0xff);
+           valid(frame, size, PROTO_REPLY_HEAD);
 }

@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #define PROTO_MAX_FRAME 256u
+#define PROTO_REPLY_HEAD 0x60u
 #define PROTO_MAX_DATA (PROTO_MAX_FRAME - 8u)
 #define PROTO_REPLY_DATA 32u
 #define PROTO_REPLY_SIZE (PROTO_REPLY_DATA + 4u)

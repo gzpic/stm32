@@ -70,10 +70,18 @@ static void test_response_status(void)
     size_t size = proto_write(frame, sizeof frame, 1, 0, NULL, 0);
     service_init_commands(&service, groups, 1);
     service_transaction(&service, frame, size, 0);
-    assert(service.tx[0] == 0xff && service.tx[1] == COMMAND_EXECUTION_FAILED);
+    assert(service.tx[0] == 0x60 && service.tx[1] == COMMAND_EXECUTION_FAILED);
     assert(service.tx[2] == 0x55 && service.tx[PROTO_REPLY_SIZE - 1] == 0x0a);
     assert(proto_parse_reply(service.tx, PROTO_REPLY_SIZE, PROTO_REPLY_DATA));
     service.tx[1] = COMMAND_OK;
+    assert(!proto_parse_reply(service.tx, PROTO_REPLY_SIZE, PROTO_REPLY_DATA));
+    /* Reject the old response header even when its CRC is otherwise valid. */
+    service.tx[0] = 0xff;
+    {
+        uint16_t crc = proto_crc16(service.tx, PROTO_REPLY_SIZE - 3);
+        service.tx[PROTO_REPLY_SIZE - 3] = (uint8_t)crc;
+        service.tx[PROTO_REPLY_SIZE - 2] = (uint8_t)(crc >> 8);
+    }
     assert(!proto_parse_reply(service.tx, PROTO_REPLY_SIZE, PROTO_REPLY_DATA));
 }
 
