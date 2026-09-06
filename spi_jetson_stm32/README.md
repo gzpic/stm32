@@ -1,6 +1,6 @@
 # Jetson Orin Nano / STM32F407 SPI 新项目
 
-先阅读 [协议文档](PROTOCOL.md)。本版包含协议编解码、示例回显业务、Linux 主机命令行程序和 STM32F407 SPI1 DMA 从机。
+先阅读 [项目需求说明](REQUIREMENTS.md)，了解已确认需求、当前实现约定及验收范围，再查看 [协议文档](PROTOCOL.md)。本版包含协议编解码、示例回显业务、Linux 主机命令行程序和 STM32F407 SPI1 DMA 从机。
 
 ## 软件测试
 
