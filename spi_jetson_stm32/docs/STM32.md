@@ -57,6 +57,6 @@ python3 tools/generate_keil.py
 
 一般不需要修改 `spi_slave.c`。在 `../common/commands.c` 中增加回调并注册 CMDID/SUBCMDID。回调先填写 `response->data` 和 `response->size`，必须在所有退出路径最后填写 `response->status`；返回数据不得超过 251 字节，也不得保存请求/响应指针供回调结束后使用。
 
-当前没有 READY 握手引脚，Jetson 两次事务之间暂定至少等待 10 ms。因此回调不能长期阻塞；需要耗时操作时，应先扩展 READY/完成通知或异步任务协议。
+READY/BUSY 不在本版绑定具体 GPIO；抽象方案和启用前必须核对的板级证据见 [READY/BUSY 握手设计](READY_BUSY_DESIGN.md)。在映射确认前，Jetson 两次事务之间暂定至少等待 10 ms，回调不能长期阻塞。
 
 协议单元测试不覆盖真实 SPI 时序。下载后仍需用 Jetson 和逻辑分析仪验证 CS 窗口、首字节、DMA 长度、连续事务与错误恢复。

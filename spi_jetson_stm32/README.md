@@ -37,7 +37,7 @@ make
 
 目标沿用 STM32F407ZGTx、8 MHz HSE、168 MHz 配置；其他 STM32F4 型号/晶振需要修改目标、启动文件和时钟。PA4/5/6/7 用于 SPI1，DMA2 Stream0/3 与 EXTI4 专用。新增 SPI 数据路径使用 CMSIS 寄存器控制 DMA；系统初始化及 GPIO 复用现有 HAL。不可同时初始化原来 SPI 主机驱动或占用这些 DMA/中断。
 
-`stm32/main.c` 是新入口；`stm32/spi_slave.c` 在 CS 上升沿中断保存快照，后台轮询消费；`common/service.c` 负责校验与响应；`common/commands.c` 提供 CMDID/SUBCMDID 命令表和业务回调；`common/protocol.c` 是主从共享编解码。详见 [协议层设计与添加命令](PROTOCOL_LAYER.md)。DMA 缓冲区保持在 SRAM1/2，不能放在 CCM。主循环需满足协议文档的 10 ms 片选间隔，暂不包含 READY 引脚握手。
+`stm32/main.c` 是新入口；`stm32/spi_slave.c` 在 CS 上升沿中断保存快照，后台轮询消费；`common/service.c` 负责校验与响应；`common/commands.c` 提供 CMDID/SUBCMDID 命令表和业务回调；`common/protocol.c` 是主从共享编解码。详见 [协议层设计与添加命令](PROTOCOL_LAYER.md)。DMA 缓冲区保持在 SRAM1/2，不能放在 CCM。主循环需满足协议文档的 10 ms 片选间隔；READY/BUSY 重新设计见 [握手设计](docs/READY_BUSY_DESIGN.md)，当前不绑定物理管脚。
 
 可以运行 `python3 tools/generate_keil.py` 重新生成工程，该操作覆盖生成的 `stm32/spi_slave.uvprojx`，保留 vendor 中的模板。只有刷新厂商依赖时才需要原始示例，使用 `python3 tools/import_hal.py [原例程目录]`。原始厂商代码的版权与许可沿用原文件。
 
