@@ -24,7 +24,8 @@ for element in tree.iter("IncludePath"):
                                 if old_path(p).is_dir())
         element.text += ";.;" + relative(root / "common")
 for tag, text in [("TargetName", "Jetson_SPI_Slave"), ("OutputName", "spi_slave"),
-                  ("OutputDirectory", ".\\Output\\"), ("ListingPath", ".\\Output\\")]:
+                  ("OutputDirectory", ".\\Output\\"), ("ListingPath", ".\\Output\\"),
+                  ("pCCUsed", "6240000::V6.24::ARMCLANG"), ("uAC6", "1")]:
     for element in tree.iter(tag):
         element.text = text
 groups = tree.find(".//Groups")

@@ -1,4 +1,7 @@
 build/
 stm32/Output/
+stm32/DebugConfig/
+stm32/RTE/
+stm32/mdk5-build.log
 *.uvguix.*
 *.uvoptx

@@ -8,7 +8,8 @@
 | AddressSanitizer / UndefinedBehaviorSanitizer | 通过：同一协议/状态转换测试，无报告 |
 | 新增 `stm32/main.c`、`stm32/spi_slave.c` Cortex-M4 语法检查 | 通过，非完整链接 |
 | 生成 Keil 工程所有源文件路径存在性 | 通过 |
-| Keil 完整编译和下载 | 未执行：本机无 Keil |
+| Keil 完整编译 | Windows MDK 5.43a、Arm Compiler 6.24 构建通过：0 errors、25 条厂商依赖告警，生成 AXF 和 HEX |
+| Keil 下载/烧录 | 未执行：无连接硬件 |
 | Jetson Linux 主机程序编译 | 未执行：当前为 macOS，缺少 Linux SPI 开发环境 |
 | 实际 SPI 通信、DMA、NSS 时序 | 未执行：无连接硬件 |
 
@@ -23,3 +24,5 @@ ARM 语法检查使用本地 HAL/CMSIS 设备头和 Clang `--target=arm-none-eab
 2026-09-06 上传前复查：已将依赖纳入 `vendor/hal_example`，重新生成 Keil 工程并检查引用路径。新增数字解析及合法 CRC/非法声明长度测试通过；内存检查与基于随项目依赖的 Cortex-M4 语法检查通过。详见 `REVIEW.md`。新增 Linux CI 用于在目标操作系统上编译主机程序及持续检查，实际运行结果以 GitHub Actions 为准。
 
 v0.2 帧头变更：返回帧头统一为 `0x60`，共享编码和解码同时更新。`make test` 通过，覆盖新帧头生成及旧 `0xFF` 帧头即使 CRC 正确也被拒绝。MOSI 占位值与空闲发送值仍为 `0xFF`；主从必须同步升级，实际硬件联调状态不变。
+
+2026-09-06 Windows MDK5 验证：生成工程由不可用的 Arm Compiler 5.06u7 更新为本机已安装的 Arm Compiler 6.24，随后通过 μVision 5.43a 命令行完整编译和链接。结果为 0 errors、25 warnings；告警来自归档的 HAL、ADC 内联函数和 USART 示例中的未使用参数。产物大小为 Code=10314、RO-data=470、RW-data=16、ZI-data=2224，并成功生成 `spi_slave.axf` 与 `spi_slave.hex`。本次结果验证构建，不代表已完成烧录或 SPI 硬件联调。
