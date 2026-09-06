@@ -1,0 +1,3 @@
+# Preserve imported vendor bytes and keep generated/vendor whitespace out of reviews.
+vendor/hal_example/** -text -whitespace linguist-vendored
+stm32/spi_slave.uvprojx -whitespace linguist-generated

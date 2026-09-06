@@ -1,0 +1,4 @@
+build/
+stm32/Output/
+*.uvguix.*
+*.uvoptx

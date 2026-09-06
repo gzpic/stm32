@@ -1,0 +1,39 @@
+name: SPI protocol checks
+on:
+  push:
+    paths:
+      - 'spi_jetson_stm32/**'
+      - '.github/workflows/spi-check.yml'
+  pull_request:
+    paths:
+      - 'spi_jetson_stm32/**'
+      - '.github/workflows/spi-check.yml'
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: spi_jetson_stm32
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Linux host and test protocol
+        run: make all test
+      - name: Check generated Keil project and bundled dependencies
+        run: |
+          python3 tools/generate_keil.py
+          git diff --exit-code -- stm32/spi_slave.uvprojx
+      - name: Check memory safety
+        run: |
+          cc -std=c99 -g -Wall -Wextra -Werror -fsanitize=address,undefined -Icommon tests/test_protocol.c common/protocol.c common/service.c common/commands.c -o build/test_protocol_sanitized
+          ./build/test_protocol_sanitized
+      - name: Check CLI rejects invalid arguments without accessing hardware
+        run: |
+          python3 - <<'PY'
+          import subprocess
+          cases = [[], ['/dev/not-used', '256', '0'], ['/dev/not-used', '1', '0', '0x']]
+          for args in cases:
+              result = subprocess.run(['./build/spi_request', *args], capture_output=True)
+              assert result.returncode == 2, (args, result.returncode, result.stderr)
+          PY
