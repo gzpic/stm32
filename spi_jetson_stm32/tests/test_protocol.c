@@ -193,7 +193,9 @@ int main(void)
     service_transaction(&service, frame, size, 0);
     assert(service.tx[1] == 3);
     service_transaction(&service, frame, size, 1);
-    assert(service.tx[1] == 1); /* DMA/SPI fault */
+    assert(!service.pending && service.tx[0] == 0xff); /* Failed read consumes reply. */
+    service_transaction(&service, frame, size, 1);
+    assert(service.pending && service.tx[1] == 1); /* DMA/SPI fault while receiving write. */
     service_transaction(&service, copy, 2, 0);
     assert(!service.pending); /* aborted read resets state */
     service_transaction(&service, copy, sizeof copy, 1);
