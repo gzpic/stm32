@@ -63,7 +63,7 @@ CMDID、SUBCMDID 和每个数据字节可以写成十进制或带 `0x` 前缀的
 | 写后等待 | 10 ms |
 | 读后等待 | 10 ms |
 
-这些值必须和 STM32 端及协议文档保持一致。READY/BUSY 尚未绑定实际 GPIO；在板级配置确认前，主机继续使用 10 ms 兼容等待，不访问任意 GPIO。重新设计见 [READY/BUSY 握手设计](READY_BUSY_DESIGN.md)。
+这些值必须和 STM32 端及协议文档保持一致。DONE 完成通知当前尚未在代码中启用；启用前主机继续使用 10 ms 兼容等待，不访问任意 GPIO。管脚选择和启用条件见 [DONE 握手管脚设计](READY_BUSY_DESIGN.md)。
 
 ## 输出与返回码
 
@@ -85,5 +85,56 @@ status=0 data: 30 FF 0A 00 00 ...
 ## 设备与联调
 
 `/dev/spidevB.C` 取决于 Jetson 载板、JetPack 和 pinmux，示例设备名不能直接视为实际配置。先确认对应 SPI 控制器和片选已在设备树中启用，并检查设备节点权限。Jetson 的 SCK/MOSI/MISO/CS 分别连接 STM32 的 PA5/PA7/PA6/PA4，两块板共地。
+
+当前目标机可通过 `ssh jetson` 检查到 Jetson Linux R36.4.7，系统存在 `/dev/spidev0.0`、`/dev/spidev0.1`、`/dev/spidev1.0`、`/dev/spidev1.1`。这只能说明内核有 spidev 节点，不能单独证明 40-pin 排针已经复用为 SPI。
+
+使用 Jetson-IO 检查 40-pin Header：
+
+```sh
+sudo python3 /opt/nvidia/jetson-io/config-by-function.py -l enabled
+sudo python3 /opt/nvidia/jetson-io/config-by-function.py -l all
+sudo python3 /opt/nvidia/jetson-io/config-by-pin.py -p 19
+sudo python3 /opt/nvidia/jetson-io/config-by-pin.py -p 21
+sudo python3 /opt/nvidia/jetson-io/config-by-pin.py -p 23
+sudo python3 /opt/nvidia/jetson-io/config-by-pin.py -p 24
+```
+
+本次检查结果显示 40-pin Header 暂无启用功能，19/21/23/24/26 均为 `unused`；Jetson-IO 支持的 40-pin SPI 功能包括 `spi1 (19,21,23,24,26)` 和 `spi3 (13,16,18,22,37)`。因此接线前应先启用 `spi1`，重启后再确认：
+
+```sh
+sudo python3 /opt/nvidia/jetson-io/config-by-function.py -o dtbo '1=spi1'
+sudo reboot
+```
+
+Jetson 侧的管脚复用不由本项目 C 程序设置。`jetson/main.c` 只通过 Linux `spidev` 打开设备节点，并用 `ioctl()` 配置 Mode 0、8 bit、MSB first 和 100 kHz；SCK/MOSI/MISO/CS 实际落到哪个 40-pin 物理针脚，由 Jetson-IO 生成的设备树覆盖和重启后的 pinmux 决定。启用后建议按下面顺序复查：
+
+```sh
+sudo python3 /opt/nvidia/jetson-io/config-by-function.py -l enabled
+sudo python3 /opt/nvidia/jetson-io/config-by-pin.py -p 19
+sudo python3 /opt/nvidia/jetson-io/config-by-pin.py -p 21
+sudo python3 /opt/nvidia/jetson-io/config-by-pin.py -p 23
+sudo python3 /opt/nvidia/jetson-io/config-by-pin.py -p 24
+ls -l /dev/spidev*
+```
+
+若这些 pin 仍显示 `unused`，不要接线测试；先修正 Jetson-IO 配置或设备树覆盖。若 spidev 节点存在但 pin 仍未启用，程序可能能打开设备，但 40-pin 排针不会输出预期 SPI 波形。
+
+启用 `spi1` 后，优先使用 J12 物理 19/21/23/24 连接 STM32 默认 PA 组：
+
+| Jetson J12 | Jetson SPI 信号 | STM32 默认信号 |
+|---|---|---|
+| Pin 19 | MOSI | PA7 / SPI1_MOSI |
+| Pin 21 | MISO | PA6 / SPI1_MISO |
+| Pin 23 | SCK | PA5 / SPI1_SCK |
+| Pin 24 | CS0 | PA4 / SPI1_NSS |
+| Pin 18 | GPIO 输入 / DONE | PB0 / DONE |
+| Pin 22 | GPIO 输出 / IRQ | PB1 / EXTI1（计划，当前代码未启用） |
+| 任意 GND | GND | GND |
+
+若 STM32 端改用本地 `实验25 SPI实验` 的 PB3/PB4/PB5/PB14 备选组，Jetson 侧仍可使用同一组 J12 `spi1` 管脚，但 STM32 固件必须同步改为 PB 组；不能只改接线。
+
+DONE 管脚不是 SPI 片选。它是 STM32 到 Jetson 的普通 GPIO 完成通知：高电平表示 STM32 已完成当前阶段并可继续，低电平表示未完成。当前最终推荐为 STM32 PB0 接 Jetson J12 Pin 18；Pin 18 当前可通过 `gpioinfo gpiochip0 | grep 'line 125'` 检查为 `PY.03` unused input。启用 DONE 前，确认没有启用会占用 Pin 18 的 `spi3`，并给 DONE 线外接 10 kΩ 下拉到 GND。
+
+计划中的 IRQ 方向与 DONE 相反：Jetson J12 Pin 22 输出到 STM32 PB1/EXTI1，空闲低，中断时在物理引脚上保持高电平至少 1 ms（建议 1～2 ms）后恢复低。IRQ 中断响应固定为 5 字节，主机只发送 5 个 `0xFF` 读取。当前一次性 spidev 写事务无法保证在内核传输中途立即停钟和释放 CS，启用前必须先完成可取消传输方案。详见 [IRQ 命令中断管脚设计](IRQ_INTERRUPT_DESIGN.md)。
 
 联调时建议先使用 100 kHz 和默认回显命令，通过逻辑分析仪确认两个独立 CS 低窗口、写帧 `0x30`、返回帧 `0x60`、第二次事务的 256 字节时钟、正确的变长帧尾及至少 10 ms 的高电平间隔，再逐步提高频率或增加业务命令。

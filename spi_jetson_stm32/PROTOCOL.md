@@ -48,6 +48,7 @@ CRC16/MODBUS 覆盖偏移 0～N+1，包含最终 STATUS 和实际 RESULT。返�
 | `0x02` | 找不到匹配命令 | 分发层，不调用回调 |
 | `0x03` | 命令参数错误 | 回调结束前；内部调用参数错误也使用此值 |
 | `0x04` | 执行失败，或回调遗漏状态赋值 | 回调结束前；分发层预设该值 |
+| `0x05` | `CMD_INTERRUPTED_ERR`，IRQ 请求中止当前命令，原结果作废 | 计划中的 IRQ/服务层；当前代码未实现 |
 
 回调接口接收 `command_response *response`，先处理业务并填写 `response->data` 和 `response->size`，最后赋值 `response->status`。分发层提前将长度设为 0、状态设为 `0x04`，防止回调遗漏字段却误报成功。后台校验长度后，显式序列化状态和实际数据并计算 CRC，最后交给 DMA。
 
@@ -57,6 +58,8 @@ SPI 主机必须预先产生时钟，而返回帧又没有长度字段。本版�
 
 这种边界识别保留了无长度字段的帧格式，但理论上存在 RESULT 内部片段偶然同时满足尾字节和 CRC 的可能；选择最长有效前缀可排除较短的偶然匹配，帧后的全 `0xFF` 不会产生新的尾字节。若以后需要严格无歧义的变长协议，应在返回帧增加长度字段或定义转义机制。
 
+计划中的 IRQ 中断响应是普通变长读取规则的明确例外。该响应没有 RESULT，固定为 `60 05 E9 B3 0A`；主机已知自己发出了有效 IRQ，因此第二次事务只发送 5 个 `0xFF` 并接收这 5 字节，不附加 251 个填充字节。STM32 只有在待发响应被标记为 IRQ 固定帧时才接受这种 5 字节读事务。完整设计见 [IRQ 命令中断管脚设计](docs/IRQ_INTERRUPT_DESIGN.md)。
+
 ## 两次操作与时序
 
 1. STM32 先上电完成初始化；Jetson 启动后默认等待 100 ms。
@@ -65,21 +68,25 @@ SPI 主机必须预先产生时钟，而返回帧又没有长度字段。本版�
 4. CS 再拉低，Jetson 一次传输 256 个 `FF`，同时接收“变长返回帧 + `FF` 填充”；CS 拉高。
 5. CS 再保持高至少 10 ms，供从机恢复到接收状态，才可开始下一请求。
 
-这是无额外握手 GPIO 的兼容运行方式。READY/BUSY 的新设计见 [READY/BUSY 握手设计](docs/READY_BUSY_DESIGN.md)；在实际两端板级资料和测量完成前，不得写死物理管脚。上述间隔依赖从机主循环及时处理，当前示例中不得加入超过间隔的阻塞任务。10 ms 不是任意业务负载下的硬实时保证。禁止多个进程并发访问同一 SPI 从机；主机程序对设备执行协作式独占锁。
+这是无额外握手 GPIO 的兼容运行方式。DONE 完成通知的管脚选择和启用条件见 [DONE 握手管脚设计](docs/READY_BUSY_DESIGN.md)；推荐 STM32 PB0 输出接 Jetson J12 Pin 18 输入，但当前代码尚未启用该管脚。上述间隔依赖从机主循环及时处理，当前示例中不得加入超过间隔的阻塞任务。10 ms 不是任意业务负载下的硬实时保证。禁止多个进程并发访问同一 SPI 从机；主机程序对设备执行协作式独占锁。
+
+计划中的 IRQ 为 Jetson J12 Pin 22 输出到 STM32 PB1/EXTI1，空闲低、有效高，物理高电平至少保持 1 ms。若 IRQ 出现在 CS 低的收帧阶段，主机应立即停钟并把 CS 拉高；若出现在 CS 高的执行阶段，回调在安全点协作取消。STM32 完成清理并装载固定中断响应后再拉高 DONE。当前代码和一次性 spidev 写事务尚不能满足收帧中立即取消，不能仅接上线就启用该流程。
 
 读失败不自动重发写命令，以免重复执行有副作用的业务。下一条以 `30` 开头的合法写帧会覆盖未读响应，因此主机重新启动后可重新同步。写帧校验失败不执行业务，准备无 RESULT 的错误响应。读事务长度不正确或占位字节不全为 `FF` 时丢弃待发响应、恢复写状态。SPI 没有链路 ACK，断线可能仍表现为系统调用成功，必须验证响应头、尾和 CRC。
 
 ## STM32 实现与本地工程来源
 
-复用 `2，标准例程-HAL库版本/实验1 跑马灯实验` 的启动文件、HAL、时钟初始化和 Keil 工程配置（STM32F407ZGTx，8 MHz HSE，168 MHz 系统时钟）。参考本地 `实验25 SPI实验` 的 SPI 引脚配置；该例程原本为主机，不能直接用于从机。
+复用 `2，标准例程-HAL库版本/实验1 跑马灯实验` 的启动文件、HAL、时钟初始化和 Keil 工程配置（STM32F407ZGTx，8 MHz HSE，168 MHz 系统时钟）。本地 `实验25 SPI实验` 用于核对开发板原 SPI 资源：寄存器版例程中 SPI1_SCK=PB3、SPI1_MISO=PB4、SPI1_MOSI=PB5、SPI1_CS=PB14，其中 PB14 是访问 W25Q Flash 的软件片选。该例程原本为 STM32 主机，不能直接用于本项目的 SPI 从机。
 
 新增 SPI1 从机：PA4=NSS，PA5=SCK，PA6=MISO，PA7=MOSI，AF5；DMA2 Stream0/Channel3 接收，Stream3/Channel3 发送，普通模式、字节宽度。NSS 上升沿使用 EXTI4，按实际 DMA 接收计数确定事务长度，允许写帧变长。DMA 缓冲区为 257 字节，多出的一个字节用于识别超长事务，必须放在普通 SRAM，不可放 CCM。每次事务结束重置 SPI 并重新预装 DMA，以清除未发送完的字节。
+
+选择 PA4/PA5/PA6/PA7 的依据是：PA4 是 SPI1 硬件 NSS，并且可路由到 EXTI4，适合从机在 CS 上升沿收尾；PB3/PB4/PB5 虽然也是 SPI1 AF5，但原例程的 PB14 不是硬件 NSS。若因板级接线必须改用 PB3/PB4/PB5/PB14，应同步修改 GPIO、软件 NSS 从机配置、EXTI14、中断入口、Keil 资源说明和接线文档，并确认板载 Flash 不与 Jetson 共用总线。
 
 以 NSS 边沿界定事务，避免依赖从机 BSY 结束检测。依据：[ST F407 勘误 ES0182](https://www.st.com/resource/en/errata_sheet/es0182-stm32f405407xx-and-stm32f415417xx-device-errata-stmicroelectronics.pdf)。CS 保持低、主机不再产生时钟时不会执行业务；CS 恢复高后才能收尾。失去时钟/片选时不擅自重放命令。
 
 ## 接线与 Jetson 配置
 
-Jetson 所选 SPI 控制器的 SCK/MOSI/MISO/CS 分别接 PA5/PA7/PA6/PA4，GND 共地，使用 3.3 V 电平。NSS 建议外接 10 kΩ 上拉。确认板上这些引脚未被其他外设占用。具体 Jetson 排针号和 `/dev/spidevB.C` 取决于载板、JetPack 与 pinmux，当前不猜测设备名；需先在目标机启用对应 SPI pinmux 并确认设备节点，再传给程序。
+Jetson 所选 SPI 控制器的 SCK/MOSI/MISO/CS 分别接 PA5/PA7/PA6/PA4，GND 共地，使用 3.3 V 电平。NSS 建议外接 10 kΩ 上拉。DONE 完成通知的最终推荐接线为 STM32 PB0 输出到 Jetson J12 Pin 18 输入，DONE 建议外接 10 kΩ 下拉。确认板上这些引脚未被其他外设占用。具体 Jetson 排针号和 `/dev/spidevB.C` 取决于载板、JetPack 与 pinmux，需先在目标机启用对应 SPI pinmux 并确认设备节点，再传给程序；DONE 的 Linux GPIO line 也需用 `gpioinfo` 复查。
 
 主机使用两个独立的 `SPI_IOC_MESSAGE(1)`；每个消息结束释放 CS。依据：[Linux spidev 文档](https://kernel.org/doc/html/v5.12/spi/spidev.html)。硬件片选是否连续覆盖整帧需用逻辑分析仪验证。
 

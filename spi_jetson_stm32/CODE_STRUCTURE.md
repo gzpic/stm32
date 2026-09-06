@@ -15,10 +15,12 @@ spi_jetson_stm32/
 ├── VALIDATION.md             # 已执行与待执行的验证记录
 ├── Makefile                  # Jetson 程序和主机协议测试构建入口
 │
-├── docs/                     # 三份并列的核心说明
+├── docs/                     # 平台说明、接线和可选 GPIO 设计
 │   ├── MASTER_SLAVE.md       # 主从系统总体说明
 │   ├── STM32.md              # STM32 从机说明
-│   └── JETSON.md             # Jetson 主机说明
+│   ├── JETSON.md             # Jetson 主机说明
+│   ├── READY_BUSY_DESIGN.md  # DONE 完成通知管脚设计
+│   └── IRQ_INTERRUPT_DESIGN.md # IRQ 命令中断设计（尚未实现）
 │
 ├── common/                   # 与操作系统、MCU 外设无关的共享代码
 │   ├── protocol.h            # 帧常量、请求视图和编解码接口
@@ -116,4 +118,4 @@ tests/test_protocol.c
 - STM32：Keil 工程编译 `stm32`、`common` 和 `vendor/hal_example` 中被引用的文件。
 - `build/`、Keil 输出和调试器个人设置属于生成物，不提交仓库。
 
-当前结构适合串行的“一次写命令、一次读响应”。若将来需要多个并发请求、变长响应或长耗时命令，应先扩展请求关联、队列及 READY/完成通知协议，再调整通信层。
+当前结构适合串行的“一次写命令、一次读响应”。若将来需要多个并发请求、变长响应或长耗时命令，应先扩展请求关联、队列及 DONE 完成通知协议，再调整通信层。

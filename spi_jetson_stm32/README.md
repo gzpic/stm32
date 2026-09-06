@@ -7,6 +7,7 @@
 | [主从总体说明](docs/MASTER_SLAVE.md) | 系统角色、接线、两次 SPI 时序、帧概览和主从协作 |
 | [STM32 从机说明](docs/STM32.md) | 固件文件、硬件资源、中断/后台流程、Keil 构建和命令扩展 |
 | [Jetson 主机说明](docs/JETSON.md) | Linux 编译、spidev 使用、参数、返回码和联调方法 |
+| [IRQ 命令中断设计](docs/IRQ_INTERRUPT_DESIGN.md) | IRQ 管脚、1 ms 脉宽、取消边界和固定 5 字节中断响应 |
 
 需求边界见 [项目需求说明](REQUIREMENTS.md)，线上字段见 [协议文档](PROTOCOL.md)，代码入口和依赖方向见 [代码目录与模块结构](CODE_STRUCTURE.md)。
 
@@ -39,7 +40,9 @@ make
 
 目标沿用 STM32F407ZGTx、8 MHz HSE、168 MHz 配置；其他 STM32F4 型号/晶振需要修改目标、启动文件和时钟。PA4/5/6/7 用于 SPI1，DMA2 Stream0/3 与 EXTI4 专用。新增 SPI 数据路径使用 CMSIS 寄存器控制 DMA；系统初始化及 GPIO 复用现有 HAL。不可同时初始化原来 SPI 主机驱动或占用这些 DMA/中断。
 
-`stm32/main.c` 是新入口；`stm32/spi_slave.c` 在 CS 上升沿中断保存快照，后台轮询消费；`common/service.c` 负责校验与响应；`common/commands.c` 提供 CMDID/SUBCMDID 命令表和业务回调；`common/protocol.c` 是主从共享编解码。详见 [协议层设计与添加命令](PROTOCOL_LAYER.md)。DMA 缓冲区保持在 SRAM1/2，不能放在 CCM。主循环需满足协议文档的 10 ms 片选间隔；READY/BUSY 重新设计见 [握手设计](docs/READY_BUSY_DESIGN.md)，当前不绑定物理管脚。
+`stm32/main.c` 是新入口；`stm32/spi_slave.c` 在 CS 上升沿中断保存快照，后台轮询消费；`common/service.c` 负责校验与响应；`common/commands.c` 提供 CMDID/SUBCMDID 命令表和业务回调；`common/protocol.c` 是主从共享编解码。详见 [协议层设计与添加命令](PROTOCOL_LAYER.md)。DMA 缓冲区保持在 SRAM1/2，不能放在 CCM。主循环需满足协议文档的 10 ms 片选间隔；DONE 完成通知设计见 [握手设计](docs/READY_BUSY_DESIGN.md)，推荐 STM32 PB0 接 Jetson J12 Pin 18。当前代码尚未启用 DONE。
+
+计划增加的 IRQ 命令中断使用 STM32 PB1/EXTI1 接 Jetson J12 Pin 22，主机输出高脉冲至少保持 1 ms。中断后的 `CMD_INTERRUPTED_ERR` 返回固定 5 字节，只需 5 个 `0xFF` 提供读时钟。详见 [IRQ 命令中断设计](docs/IRQ_INTERRUPT_DESIGN.md)；当前代码尚未实现。
 
 可以运行 `python3 tools/generate_keil.py` 重新生成工程，该操作覆盖生成的 `stm32/spi_slave.uvprojx`，保留 vendor 中的模板。只有刷新厂商依赖时才需要原始示例，使用 `python3 tools/import_hal.py [原例程目录]`。原始厂商代码的版权与许可沿用原文件。
 

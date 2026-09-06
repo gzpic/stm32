@@ -18,10 +18,20 @@ Jetson SCK   ───────── STM32 PA5 / SPI1_SCK
 Jetson MOSI  ───────── STM32 PA7 / SPI1_MOSI
 Jetson MISO  ───────── STM32 PA6 / SPI1_MISO
 Jetson CS    ───────── STM32 PA4 / SPI1_NSS + EXTI4
+Jetson DONE  ───────── STM32 PB0 / DONE
+Jetson IRQ   ───────── STM32 PB1 / EXTI1（计划）
 Jetson GND   ───────── STM32 GND
 ```
 
-当前使用 3.3 V、SPI Mode 0、8 bit、MSB first、100 kHz、CS 低有效。Jetson 的实际排针、SPI 控制器和 `/dev/spidevB.C` 取决于载板、JetPack 和 pinmux。
+当前使用 3.3 V、SPI Mode 0、8 bit、MSB first、100 kHz、CS 低有效。DONE 为 STM32 输出到 Jetson 输入，高电平表示完成/可继续，低电平表示未完成。当前代码尚未启用 DONE，启用前仍按 10 ms 间隔运行。Jetson 的实际排针、SPI 控制器和 `/dev/spidevB.C` 取决于载板、JetPack 和 pinmux。
+
+### 管脚选择依据
+
+当前固件默认选择 STM32F407 的 SPI1 标准硬件 NSS 组合：PA4=NSS、PA5=SCK、PA6=MISO、PA7=MOSI，全部为 AF5。选择这组管脚的主要原因是 PA4 可以作为 SPI1 硬件 NSS，同时接 EXTI4 检测 CS 上升沿，和本项目“以 CS 边沿界定一次事务”的从机设计一致，代码改动和时序风险最低。
+
+本地寄存器版 `实验25 SPI实验` 使用的是另一组 SPI1 复用管脚：PB3=SCK、PB4=MISO、PB5=MOSI，PB14 为软件 GPIO 片选。该例程面向 STM32 作为主机访问板载 W25Q Flash，不是 Jetson 主机、STM32 从机结构；PB14 也不是 SPI1 硬件 NSS。因此这组管脚只能作为“PA4～PA7 不方便接出时”的备选方案。若改用 PB3/PB4/PB5/PB14，需要同步修改 `stm32/spi_slave.c` 的 GPIO、NSS/SSM、EXTI14、中断入口和文档，并确认板载 SPI Flash 不会与 Jetson 共用总线造成冲突。
+
+实际板级选择顺序：优先使用 PA4/PA5/PA6/PA7；若开发板排针不方便或被其他外设占用，再评估 PB3/PB4/PB5/PB14；任何改管脚都必须用示波器或逻辑分析仪确认 SCK、MOSI、MISO、CS 时序。
 
 ## 两次 SPI 事务
 
@@ -58,7 +68,7 @@ CS 上升沿中断只停止 DMA、记录接收长度和硬件错误、复制事�
 
 后台先检查写帧头、帧尾、实际长度、声明总长度和 CRC。校验通过后，先按 CMDID 找命令组，再按 SUBCMDID 找组内回调。回调处理业务，填写返回数据与长度，并在最后填写状态。协议层检查返回长度，生成帧头、CRC 和帧尾，再由 SPI DMA 在第二次事务中送出。
 
-当前使用单帧邮箱，只支持串行的一写一读。buffer 占用期间的新事务不会覆盖正在处理的命令。READY/BUSY 尚未绑定实际管脚；可选握手的重新设计、启用条件和板级配置要求见 [READY/BUSY 握手设计](READY_BUSY_DESIGN.md)。在板级资料确认前，默认仍依赖 10 ms 间隔。
+当前使用单帧邮箱，只支持串行的一写一读。buffer 占用期间的新事务不会覆盖正在处理的命令。DONE 完成通知推荐使用 STM32 PB0 输出接 Jetson J12 Pin 18 输入；语义、启用条件和板级配置要求见 [DONE 握手管脚设计](READY_BUSY_DESIGN.md)。当前代码尚未启用 DONE，默认仍依赖 10 ms 间隔。
 
 ## 返回状态
 
@@ -69,8 +79,11 @@ CS 上升沿中断只停止 DMA、记录接收长度和硬件错误、复制事�
 | `0x02` | CMDID/SUBCMDID 没有匹配命令 |
 | `0x03` | 命令参数错误 |
 | `0x04` | 命令执行失败，或回调遗漏状态 |
+| `0x05` | `CMD_INTERRUPTED_ERR`，IRQ 请求中止命令（计划，当前未实现） |
 
 主机应先验证返回帧头、帧尾、CRC 和帧后填充，再读取 STATUS。STATUS 非 `0x00` 时，不应将 RESULT 当成成功数据使用。写传输失败后不自动重试，因为 STM32 可能已经执行该命令。
+
+计划中的 IRQ 由 Jetson Pin 22 输出到 STM32 PB1/EXTI1，高电平至少保持 1 ms。中断响应固定为 `60 05 E9 B3 0A`，主机仅用 5 个 `0xFF` 读取，不走普通响应的 256 字节填充。收帧阶段与执行阶段的取消边界见 [IRQ 命令中断管脚设计](IRQ_INTERRUPT_DESIGN.md)。
 
 ## 代码对应关系
 
