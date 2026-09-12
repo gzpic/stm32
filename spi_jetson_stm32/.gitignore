@@ -9,3 +9,5 @@ stm32/*.log
 stm32/EventRecorderStub.scvd
 *.uvguix.*
 *.uvoptx
+__pycache__/
+*.pyc

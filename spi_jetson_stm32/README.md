@@ -42,6 +42,19 @@ make
 
 响应为 `60 STATUS RESULT[N] CRC_LO CRC_HI 0A`，逻辑长度为 5～256 字节。I2C 读取固定请求 256 字节，逻辑帧后的 `0xFF` 是填充。单次写操作失败时执行状态可能不确定，程序不自动重试。
 
+## Windows 本地命令客户端
+
+本机可通过 SSH 调用 Jetson 上已编译的 `build/i2c_request`，无需在 Windows 直接访问 I2C。常用手动命令：
+
+```powershell
+& "D:\conda\python.exe" tools\jetson_command_client.py arm-cortex-temp
+& "D:\conda\python.exe" tools\jetson_command_client.py light
+& "D:\conda\python.exe" tools\jetson_command_client.py identity
+& "D:\conda\python.exe" tools\jetson_command_client.py echo 0x30 0xFF 0x0A
+```
+
+脚本可作为模块导入，命名函数例如 `getArmCortexTemp()`、`getLightLevel()`、`getDht11Temp()`、`getDeviceIdentity()` 和 `echo(payload)`。没有业务载荷的传感器函数不需要位置参数；如需指定 Jetson 或 I2C 设备，可传输参数，例如 `getArmCortexTemp(host="jetson", device="/dev/i2c-7")`。原始命令可使用 `raw CMDID SUBID [BYTE ...]`。
+
 ## STM32 从机
 
 从机端文件、硬件资源和后台处理流程见 [STM32 从机说明](docs/STM32.md)。
