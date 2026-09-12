@@ -1,5 +1,5 @@
-#ifndef SPI_SERVICE_H
-#define SPI_SERVICE_H
+#ifndef SERVICE_H
+#define SERVICE_H
 #include "protocol.h"
 #include "commands.h"
 typedef struct {
@@ -8,11 +8,13 @@ typedef struct {
     size_t tx_size;
     const command_group *groups;
     size_t group_count;
-} spi_service;
-void service_init(spi_service *service);
-/* Tables and callback contexts must outlive service; initialize before enabling SPI. */
-void service_init_commands(spi_service *service, const command_group *groups, size_t count);
-/* Background only: process a snapshot captured by the NSS rising-edge ISR. */
-void service_transaction(spi_service *service, const uint8_t *rx, size_t size,
-                         int transport_error);
+} protocol_service;
+void service_init(protocol_service *service);
+/* Tables and callback contexts must outlive service. */
+void service_init_commands(protocol_service *service, const command_group *groups, size_t count);
+/* Background only: process exactly one host-to-device command frame. */
+void service_process_write(protocol_service *service, const uint8_t *rx, size_t size,
+                           int transport_error);
+/* Call only after the host has read a complete pending response. */
+void service_consume_response(protocol_service *service);
 #endif

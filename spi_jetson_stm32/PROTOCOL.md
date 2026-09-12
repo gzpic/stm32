@@ -1,6 +1,19 @@
-# Jetson Orin Nano ↔ STM32F407 SPI 协议 v0.3
+# Jetson Orin Nano ↔ STM32F407 协议 v0.4
 
-状态：按当前需求形成的可运行联调草案。先制定本文档，再实现代码。
+状态：v0.4 为当前 I2C 实现；后续保留的 SPI 描述是历史设计记录，不是当前运行方式。
+
+## v0.4 I2C 传输（当前）
+
+Jetson Orin Nano 是 I2C 主机，STM32F407 I2C1 是 7 bit 地址 `0x42` 的从机。接线固定为 J12 Pin 5/SCL 到 PB6、Pin 3/SDA 到 PB7、Pin 6/GND；两端使用 3.3 V，PB6/PB7 为 AF4 开漏且无内部上下拉。Jetson 使用 `/dev/i2c-7`。
+
+线上帧字节格式、CRC16/MODBUS、最大写帧 256 字节和最大响应逻辑帧 256 字节完全沿用 v0.3。一次请求由两个 I2C 事务组成：
+
+1. Jetson 写完整 `30 CMDID LEN_LO LEN_HI SUBCMD DATA... CRC_LO CRC_HI 0A` 命令帧并结束 STOP。
+2. Jetson 读取固定 256 字节。STM32 返回 `60 STATUS RESULT... CRC_LO CRC_HI 0A`，逻辑帧后以 `FF` 填充。
+
+STM32 收到写事务 STOP 后在主循环处理命令。响应尚未准备好时，任何读操作返回无 RESULT 的 `STATUS=0x06` BUSY 帧；Jetson 每 1 ms 只重试读操作，最长等待 1000 ms，绝不重发可能已执行的写命令。最终响应被完整读取后从机清除待响应状态。有效的新写命令可以覆盖未读旧响应；无效写帧不能覆盖旧响应。
+
+当前命令表除 `CMDID=0x01`、`SUBCMD=0x00` 的回显外，还提供 `CMDID=0xF0` 命令组：`SUBCMD=0x00` 忽略请求载荷，固定返回 18 字节 ASCII `JETSON-STM32-COLLA`；`SUBCMD=0x01` 从 DHT11（PG9）读取温度，成功时 RESULT 为 1 字节无符号整数摄氏温度；`SUBCMD=0x02` 读取 STM32 内部温度传感器（ADC1 通道 16），RESULT 为 2 字节小端有符号整数，单位 `0.01°C`；`SUBCMD=0x03` 读取板载 LS1 光敏传感器（PF7/ADC3 通道 5），RESULT 为 1 字节相对光照强度 `0~100`。传感器读取失败或 DHT11 校验失败时返回 `STATUS=0x04` 且无 RESULT。
 
 v0.2：读返回帧头改为 `0x60`，主从两端必须一起更新；读操作的 MOSI 占位字节仍为 `0xFF`，帧长度和其余字段不变。
 

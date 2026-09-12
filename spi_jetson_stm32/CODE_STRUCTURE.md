@@ -1,6 +1,6 @@
 # 代码目录与模块结构
 
-本文说明 `spi_jetson_stm32` 的代码边界、依赖方向和主要调用流程。项目当前采用“硬件通信层 → 协议服务层 → 命令业务层”三层结构；Jetson 和 STM32 共享纯 C 的帧编解码代码。
+本文说明 `spi_jetson_stm32` 的代码边界、依赖方向和主要调用流程。项目当前采用 I2C 通信层（Jetson `/dev/i2c-7`，STM32 I2C1/PB6/PB7/`0x42`）→ 协议服务层 → 命令业务层三层结构；Jetson 和 STM32 共享纯 C 的帧编解码代码。后文保留的 SPI 架构图用于历史定位，不是当前构建入口。
 
 ## 目录树
 
@@ -20,7 +20,9 @@ spi_jetson_stm32/
 │   ├── STM32.md              # STM32 从机说明
 │   ├── JETSON.md             # Jetson 主机说明
 │   ├── READY_BUSY_DESIGN.md  # DONE 完成通知管脚设计
-│   └── IRQ_INTERRUPT_DESIGN.md # IRQ 命令中断设计（尚未实现）
+│   ├── IRQ_INTERRUPT_DESIGN.md # IRQ 命令中断设计（尚未实现）
+│   ├── SPI_TEST_PLAN.md       # SPI 分层测试、定位过程和结果
+│   └── I2C_TEST_RECORD.md     # I2C 管脚、配置和双向读写记录
 │
 ├── common/                   # 与操作系统、MCU 外设无关的共享代码
 │   ├── protocol.h            # 帧常量、请求视图和编解码接口
@@ -35,11 +37,18 @@ spi_jetson_stm32/
 │   ├── main.c                # 固件入口和非阻塞后台轮询
 │   ├── spi_slave.h           # SPI 从机通信层公开接口
 │   ├── spi_slave.c           # SPI1、DMA、CS 上升沿中断和命令 buffer
-│   └── spi_slave.uvprojx     # 可直接打开的 Keil MDK 工程
+│   ├── spi_slave.uvprojx     # 正式 SPI 从机 Keil MDK 工程
+│   ├── spi_basic_test.c      # 无 DMA SPI 最小从机测试
+│   ├── spi_basic_test.uvprojx # 无 DMA SPI 测试工程
+│   ├── i2c_basic_test.c      # I2C1 寄存器式最小从机测试
+│   └── i2c_basic_test.uvprojx # I2C1 测试工程
 │
 ├── jetson/                   # Jetson Orin Nano 主机专用代码
 │   ├── README.md             # 指向 docs/JETSON.md 的代码目录入口
 │   ├── main.c                # spidev 配置、写事务、等待、读事务及校验
+│   ├── spi_loopback.c        # MOSI/MISO 全双工回环测试工具
+│   ├── spi_basic_test.c      # 配合 STM32 最小从机的板间测试工具
+│   ├── gpio_sck_test.c       # 无分析仪时使用的低速 GPIO 脉冲辅助工具
 │   └── parse_number.h        # 命令行十进制/十六进制参数解析
 │
 ├── tests/
@@ -55,6 +64,8 @@ spi_jetson_stm32/
 │
 └── build/                    # 本机构建产物，运行 make 后生成，不提交
     ├── spi_request           # Jetson ARM64 主机程序
+    ├── spi_loopback          # Jetson SPI 回环测试程序
+    ├── spi_basic_test        # Jetson/STM32 最小 SPI 测试程序
     └── test_protocol         # 主机协议测试程序
 ```
 

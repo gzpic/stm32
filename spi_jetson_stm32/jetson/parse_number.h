@@ -1,5 +1,5 @@
-#ifndef SPI_PARSE_NUMBER_H
-#define SPI_PARSE_NUMBER_H
+#ifndef PARSE_NUMBER_H
+#define PARSE_NUMBER_H
 #include <errno.h>
 #include <stdlib.h>
 

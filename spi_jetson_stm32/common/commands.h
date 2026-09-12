@@ -1,5 +1,5 @@
-#ifndef SPI_COMMANDS_H
-#define SPI_COMMANDS_H
+#ifndef COMMANDS_H
+#define COMMANDS_H
 #include "protocol.h"
 
 enum {
@@ -7,7 +7,8 @@ enum {
     COMMAND_BAD_FRAME = 1,
     COMMAND_NOT_FOUND = 2,
     COMMAND_BAD_ARGUMENT = 3,
-    COMMAND_EXECUTION_FAILED = 4
+    COMMAND_EXECUTION_FAILED = 4,
+    COMMAND_BUSY = 6
 };
 typedef struct {
     uint8_t status;
@@ -17,7 +18,7 @@ typedef struct {
 /* Background only. Data starts zeroed, size=0; status defaults to execution failed.
    Request data is valid only until this callback returns. Do not retain it.
    Fill data and size, then write response->status LAST on every exit path.
-   Callbacks must respect sizeof response->data and the SPI timing budget. */
+   Callbacks must respect sizeof response->data and the transport timing budget. */
 typedef void (*command_callback)(const proto_request *request,
                                  command_response *response, void *context);
 typedef struct {

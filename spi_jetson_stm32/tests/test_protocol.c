@@ -35,7 +35,7 @@ static void oversized_callback(const proto_request *request, command_response *r
     response->status = COMMAND_OK;
 }
 
-static proto_response parse_service_reply(const spi_service *service)
+static proto_response parse_service_reply(const protocol_service *service)
 {
     proto_response response;
     assert(service->tx_size >= PROTO_REPLY_OVERHEAD &&
@@ -46,11 +46,9 @@ static proto_response parse_service_reply(const spi_service *service)
     return response;
 }
 
-static void consume_reply(spi_service *service)
+static void consume_reply(protocol_service *service)
 {
-    uint8_t dummy[PROTO_REPLY_CLOCKS];
-    memset(dummy, 0xff, sizeof dummy);
-    service_transaction(service, dummy, sizeof dummy, 0);
+    service_consume_response(service);
     assert(!service->pending && service->tx_size == 0 && service->tx[0] == 0xff);
 }
 
@@ -59,31 +57,57 @@ static void test_dispatch(void)
     unsigned calls = 0;
     const command_entry entries[] = {{0x07, counted_callback, &calls}};
     const command_group groups[] = {{0x42, entries, 1}};
-    spi_service service;
+    protocol_service service;
     proto_response response;
     uint8_t frame[32];
     size_t size;
 
     service_init_commands(&service, groups, 1);
     size = proto_write(frame, sizeof frame, 0x42, 0x07, NULL, 0);
-    service_transaction(&service, frame, size, 0);
+    service_process_write(&service, frame, size, 0);
     response = parse_service_reply(&service);
     assert(calls == 1 && response.status == COMMAND_OK);
     assert(response.size == 1 && response.data[0] == 0xa5);
     consume_reply(&service);
 
-    service_transaction(&service, frame, size, 0);
+    service_process_write(&service, frame, size, 0);
     assert(calls == 2);
     consume_reply(&service);
 
+    size = proto_write(frame, sizeof frame, 0xf0, 0x00, NULL, 0);
+    service_init(&service);
+    service_process_write(&service, frame, size, 0);
+    response = parse_service_reply(&service);
+    assert(response.status == COMMAND_OK && response.size == 18);
+    assert(memcmp(response.data, "JETSON-STM32-COLLA", response.size) == 0);
+    consume_reply(&service);
+
+    size = proto_write(frame, sizeof frame, 0xf0, 0x01, NULL, 0);
+    service_process_write(&service, frame, size, 0);
+    response = parse_service_reply(&service);
+    assert(response.status == COMMAND_EXECUTION_FAILED && response.size == 0);
+    consume_reply(&service);
+
+    size = proto_write(frame, sizeof frame, 0xf0, 0x02, NULL, 0);
+    service_process_write(&service, frame, size, 0);
+    response = parse_service_reply(&service);
+    assert(response.status == COMMAND_EXECUTION_FAILED && response.size == 0);
+    consume_reply(&service);
+
+    size = proto_write(frame, sizeof frame, 0xf0, 0x03, NULL, 0);
+    service_process_write(&service, frame, size, 0);
+    response = parse_service_reply(&service);
+    assert(response.status == COMMAND_EXECUTION_FAILED && response.size == 0);
+    consume_reply(&service);
+
     frame[size - 1] = 0;
-    service_transaction(&service, frame, size, 0);
+    service_process_write(&service, frame, size, 0);
     response = parse_service_reply(&service);
     assert(calls == 2 && response.status == COMMAND_BAD_FRAME && response.size == 0);
     consume_reply(&service);
 
     size = proto_write(frame, sizeof frame, 0x42, 0x08, NULL, 0);
-    service_transaction(&service, frame, size, 0);
+    service_process_write(&service, frame, size, 0);
     response = parse_service_reply(&service);
     assert(calls == 2 && response.status == COMMAND_NOT_FOUND && response.size == 0);
 }
@@ -94,19 +118,19 @@ static void test_callback_response(void)
     const command_entry oversized[] = {{0, oversized_callback, NULL}};
     const command_group unfinished_group[] = {{1, unfinished, 1}};
     const command_group oversized_group[] = {{1, oversized, 1}};
-    spi_service service;
+    protocol_service service;
     proto_response response;
     uint8_t frame[8];
     size_t size = proto_write(frame, sizeof frame, 1, 0, NULL, 0);
 
     service_init_commands(&service, unfinished_group, 1);
-    service_transaction(&service, frame, size, 0);
+    service_process_write(&service, frame, size, 0);
     response = parse_service_reply(&service);
     assert(response.status == COMMAND_EXECUTION_FAILED);
     assert(response.size == 1 && response.data[0] == 0x55);
 
     service_init_commands(&service, oversized_group, 1);
-    service_transaction(&service, frame, size, 0);
+    service_process_write(&service, frame, size, 0);
     response = parse_service_reply(&service);
     assert(response.status == COMMAND_EXECUTION_FAILED && response.size == 0);
 }
@@ -154,24 +178,29 @@ static void test_variable_reply(void)
 
 static void test_pending_response(void)
 {
-    spi_service service;
+    protocol_service service;
     uint8_t frame[PROTO_REPLY_CLOCKS];
     size_t size;
 
     service_init(&service);
     size = proto_write(frame, sizeof frame, 1, 0, NULL, 0);
-    service_transaction(&service, frame, size, 0);
+    service_process_write(&service, frame, size, 0);
     assert(service.pending);
     memset(frame, 0xff, sizeof frame);
     frame[0] = 0x30;
-    service_transaction(&service, frame, sizeof frame, 0);
-    assert(!service.pending);
+    service_process_write(&service, frame, sizeof frame, 0);
+    assert(service.pending && parse_service_reply(&service).status == COMMAND_OK);
+    consume_reply(&service);
+
+    service_process_write(&service, frame, sizeof frame, 0);
+    assert(service.pending && parse_service_reply(&service).status == COMMAND_BAD_FRAME);
+    consume_reply(&service);
 
     size = proto_write(frame, sizeof frame, 99, 0, NULL, 0);
-    service_transaction(&service, frame, size, 0);
+    service_process_write(&service, frame, size, 0);
     assert(parse_service_reply(&service).status == COMMAND_NOT_FOUND);
     size = proto_write(frame, sizeof frame, 1, 0, NULL, 0);
-    service_transaction(&service, frame, size, 0);
+    service_process_write(&service, frame, size, 0);
     assert(parse_service_reply(&service).status == COMMAND_OK);
 }
 
@@ -180,7 +209,7 @@ int main(void)
     uint8_t frame[PROTO_MAX_FRAME + 1], copy[PROTO_MAX_FRAME + 1];
     uint8_t payload[PROTO_MAX_DATA];
     proto_request request;
-    spi_service service;
+    protocol_service service;
     proto_response response;
     size_t size, i, j;
     unsigned long value;
@@ -217,7 +246,7 @@ int main(void)
 
     size = proto_write(frame, sizeof frame, 1, 0, payload, sizeof payload);
     service_init(&service);
-    service_transaction(&service, frame, size, 0);
+    service_process_write(&service, frame, size, 0);
     response = parse_service_reply(&service);
     assert(response.status == COMMAND_OK && response.size == sizeof payload);
     assert(memcmp(response.data, payload, sizeof payload) == 0);

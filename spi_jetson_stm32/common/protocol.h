@@ -1,5 +1,5 @@
-#ifndef SPI_PROTOCOL_H
-#define SPI_PROTOCOL_H
+#ifndef PROTOCOL_H
+#define PROTOCOL_H
 #include <stddef.h>
 #include <stdint.h>
 

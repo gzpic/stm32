@@ -7,7 +7,7 @@
 
   <Targets>
     <Target>
-      <TargetName>Jetson_SPI_Slave</TargetName>
+      <TargetName>I2C_Basic_Slave_Test</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
       <pCCUsed>6240000::V6.24::ARMCLANG</pCCUsed>
@@ -48,14 +48,14 @@
             <NotGenerated>0</NotGenerated>
             <InvalidFlash>1</InvalidFlash>
           </TargetStatus>
-          <OutputDirectory>.\Output\</OutputDirectory>
-          <OutputName>spi_slave</OutputName>
+          <OutputDirectory>.\OutputI2C\</OutputDirectory>
+          <OutputName>i2c_basic_test</OutputName>
           <CreateExecutable>1</CreateExecutable>
           <CreateLib>0</CreateLib>
           <CreateHexFile>1</CreateHexFile>
           <DebugInformation>1</DebugInformation>
           <BrowseInformation>1</BrowseInformation>
-          <ListingPath>.\Output\</ListingPath>
+          <ListingPath>.\OutputI2C\</ListingPath>
           <HexFormatSelection>1</HexFormatSelection>
           <Merge32K>0</Merge32K>
           <CreateBatchFile>0</CreateBatchFile>
@@ -395,9 +395,9 @@
           <GroupName>User</GroupName>
           <Files>
             <File>
-              <FileName>main.c</FileName>
+              <FileName>i2c_basic_test.c</FileName>
               <FileType>1</FileType>
-              <FilePath>main.c</FilePath>
+              <FilePath>i2c_basic_test.c</FilePath>
             </File>
             <File>
               <FileName>stm32f4xx_it.c</FileName>
@@ -508,31 +508,6 @@
               <FileName>readme.txt</FileName>
               <FileType>5</FileType>
               <FilePath>..\vendor\hal_example\readme.txt</FilePath>
-            </File>
-          </Files>
-        </Group>
-        <Group>
-          <GroupName>SPI protocol and slave</GroupName>
-          <Files>
-            <File>
-              <FileName>spi_slave.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>spi_slave.c</FilePath>
-            </File>
-            <File>
-              <FileName>protocol.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\common\protocol.c</FilePath>
-            </File>
-            <File>
-              <FileName>service.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\common\service.c</FilePath>
-            </File>
-            <File>
-              <FileName>commands.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>..\common\commands.c</FilePath>
             </File>
           </Files>
         </Group>

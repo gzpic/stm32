@@ -1,7 +1,11 @@
 build/
 stm32/Output/
+stm32/OutputBasic/
+stm32/OutputI2C/
 stm32/DebugConfig/
 stm32/RTE/
 stm32/mdk5-build.log
+stm32/*.log
+stm32/EventRecorderStub.scvd
 *.uvguix.*
 *.uvoptx
