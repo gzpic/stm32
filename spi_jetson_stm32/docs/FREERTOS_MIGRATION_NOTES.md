@@ -134,6 +134,27 @@ void SysTick_Handler(void)
 
 验收：复位后不进 HardFault；心跳计数增长；HAL tick 增长；尚不要求 I2C 服务任务化。
 
+#### 阶段 2 详细验收标准
+
+阶段 2 只有同时满足以下全部项目，才能进入阶段 3。
+
+| 类别 | 检查方法 | 通过条件 |
+|---|---|---|
+| Keil 构建 | 完整构建 `stm32/i2c_slave.uvprojx` | `0 Error(s)`；记录 Code/RO/RW/ZI 变化。厂商既有 warning 可以保留，但新增 port 或应用代码不得产生 warning。 |
+| 端口文件 | 检查 Keil 分组和链接映射 | `tasks.c`、`queue.c`、`list.c`、`heap_4.c`、选定 `port.c` 均参与链接；工程只包含一个 FreeRTOS port。 |
+| 异常入口 | 在调试器中断点或查看符号 | `SVC_Handler` 调用 `vPortSVCHandler`，`PendSV_Handler` 调用 `xPortPendSVHandler`，`SysTick_Handler` 同时调用 `HAL_IncTick` 与 `xPortSysTickHandler`。 |
+| 调度器启动 | 观察 `xTaskGetSchedulerState()` | `vTaskStartScheduler()` 后状态为 `taskSCHEDULER_RUNNING`，且不会返回。 |
+| 心跳任务 | 调试器连续观察 `heartbeat_count` | 每秒增加一次；连续观察至少 10 秒，增量应不少于 9，且不停止。 |
+| HAL 时间基准 | 连续读取 `HAL_GetTick()` | 10 秒观察窗口内单调递增约 10000 ms；允许调试暂停或读取时产生小误差。 |
+| 任务切换 | 观察任务状态或在 PendSV 断点计数 | Heartbeat 在 `vTaskDelay()` 后进入 Blocked，Idle task 获得运行机会，随后 Heartbeat 再次 Ready/Running。 |
+| 堆 | 调用 `xPortGetFreeHeapSize()` 与 `xPortGetMinimumEverFreeHeapSize()` | 两者均大于 0；记录最小历史剩余堆。不得触发 `vApplicationMallocFailedHook()`。 |
+| 栈 | `uxTaskGetStackHighWaterMark2()` | Idle 和 Heartbeat 的高水位均大于 0；初次验收建议 Heartbeat 至少保留 64 words、Idle 至少保留 32 words。不得触发 `vApplicationStackOverflowHook()`。 |
+| 故障 | 查看 Fault handler 与断言计数 | 不进入 HardFault、MemManage、BusFault、UsageFault；不触发 `configASSERT`。 |
+| I2C 回归 | Jetson 依次执行身份、温度、光照命令 | `F0/00` 返回身份；`F0/03 00` 的 RESULT 首字节为 `00` 且长度为 3；`F0/03 01` 的 RESULT 首字节为 `01` 且长度为 2。 |
+| 持续运行 | 运行心跳与 I2C 回归 | 连续运行至少 10 分钟；每分钟执行一次三条 I2C 命令，不出现超时、BUSY 超时、CRC 错误或 HardFault。 |
+
+以下情况不算通过：只完成编译；只看到一次 heartbeat 变化；关闭 `configASSERT` 或栈检查后“能运行”；I2C 未验证；或调度器运行但 HAL tick 停止。
+
 ### 阶段 3：I2C 轮询迁入任务
 
 状态：待执行。
