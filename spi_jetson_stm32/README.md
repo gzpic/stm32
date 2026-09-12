@@ -14,6 +14,7 @@
 | [IRQ 命令中断设计](docs/IRQ_INTERRUPT_DESIGN.md) | IRQ 管脚、1 ms 脉宽、取消边界和固定 5 字节中断响应 |
 | [SPI 测试步骤与记录](docs/SPI_TEST_PLAN.md) | 协议基线、Jetson 回环、板间回显、压力测试及 DONE/IRQ 验证顺序 |
 | [I2C 配置及测试记录](docs/I2C_TEST_RECORD.md) | PB6/PB7 选型、Jetson I2C7 配置、最小从机与双向读写实测结果 |
+| [FreeRTOS 迁移配置笔记](docs/FREERTOS_MIGRATION_NOTES.md) | 从裸机 I2C 从机迁入 FreeRTOS 的分阶段配置、验证与风险记录 |
 
 需求边界见 [项目需求说明](REQUIREMENTS.md)，线上字段见 [协议文档](PROTOCOL.md)，代码入口和依赖方向见 [代码目录与模块结构](CODE_STRUCTURE.md)。
 
