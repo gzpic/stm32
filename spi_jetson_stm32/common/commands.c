@@ -65,33 +65,35 @@ static void temperature(const proto_request *request, command_response *response
     response->status = COMMAND_OK;
 }
 
-static void internal_temperature(const proto_request *request, command_response *response,
-                                 void *context)
+static void sensor(const proto_request *request, command_response *response, void *context)
 {
-    int16_t value;
-    (void)request;
+    uint8_t light_value;
+    int16_t temperature_value;
     (void)context;
-    if (!platform_internal_temperature_read(&value)) {
-        response->status = COMMAND_EXECUTION_FAILED;
+    if (request->size != 1) {
+        response->status = COMMAND_BAD_ARGUMENT;
         return;
     }
-    response->data[0] = (uint8_t)value;
-    response->data[1] = (uint8_t)((uint16_t)value >> 8);
-    response->size = 2;
-    response->status = COMMAND_OK;
-}
-
-static void light(const proto_request *request, command_response *response, void *context)
-{
-    uint8_t value;
-    (void)request;
-    (void)context;
-    if (!platform_light_read(&value)) {
-        response->status = COMMAND_EXECUTION_FAILED;
+    response->data[0] = request->data[0];
+    if (request->data[0] == 0) {
+        if (!platform_internal_temperature_read(&temperature_value)) {
+            response->status = COMMAND_EXECUTION_FAILED;
+            return;
+        }
+        response->data[1] = (uint8_t)temperature_value;
+        response->data[2] = (uint8_t)((uint16_t)temperature_value >> 8);
+        response->size = 3;
+    } else if (request->data[0] == 1) {
+        if (!platform_light_read(&light_value)) {
+            response->status = COMMAND_EXECUTION_FAILED;
+            return;
+        }
+        response->data[1] = light_value;
+        response->size = 2;
+    } else {
+        response->status = COMMAND_BAD_ARGUMENT;
         return;
     }
-    response->data[0] = value;
-    response->size = 1;
     response->status = COMMAND_OK;
 }
 
@@ -101,8 +103,7 @@ static const command_entry system_commands[] = {
 static const command_entry identity_commands[] = {
     {0x00, identity, NULL},
     {0x01, temperature, NULL},
-    {0x02, internal_temperature, NULL},
-    {0x03, light, NULL}
+    {0x03, sensor, NULL}
 };
 const command_group default_command_groups[] = {
     {0x01, system_commands, sizeof system_commands / sizeof system_commands[0]},

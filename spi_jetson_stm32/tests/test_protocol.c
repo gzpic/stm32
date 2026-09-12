@@ -5,6 +5,18 @@
 #include <stdio.h>
 #include <string.h>
 
+int platform_internal_temperature_read(int16_t *temperature_centi_c)
+{
+    *temperature_centi_c = 2534;
+    return 1;
+}
+
+int platform_light_read(uint8_t *light_percent)
+{
+    *light_percent = 42;
+    return 1;
+}
+
 static void counted_callback(const proto_request *request, command_response *response,
                              void *context)
 {
@@ -60,6 +72,7 @@ static void test_dispatch(void)
     protocol_service service;
     proto_response response;
     uint8_t frame[32];
+    uint8_t sensor_type[1];
     size_t size;
 
     service_init_commands(&service, groups, 1);
@@ -91,13 +104,36 @@ static void test_dispatch(void)
     size = proto_write(frame, sizeof frame, 0xf0, 0x02, NULL, 0);
     service_process_write(&service, frame, size, 0);
     response = parse_service_reply(&service);
-    assert(response.status == COMMAND_EXECUTION_FAILED && response.size == 0);
+    assert(response.status == COMMAND_NOT_FOUND && response.size == 0);
     consume_reply(&service);
 
     size = proto_write(frame, sizeof frame, 0xf0, 0x03, NULL, 0);
     service_process_write(&service, frame, size, 0);
     response = parse_service_reply(&service);
-    assert(response.status == COMMAND_EXECUTION_FAILED && response.size == 0);
+    assert(response.status == COMMAND_BAD_ARGUMENT && response.size == 0);
+    consume_reply(&service);
+
+    sensor_type[0] = 2;
+    size = proto_write(frame, sizeof frame, 0xf0, 0x03, sensor_type, sizeof sensor_type);
+    service_process_write(&service, frame, size, 0);
+    response = parse_service_reply(&service);
+    assert(response.status == COMMAND_BAD_ARGUMENT && response.size == 0);
+    consume_reply(&service);
+
+    sensor_type[0] = 0;
+    size = proto_write(frame, sizeof frame, 0xf0, 0x03, sensor_type, sizeof sensor_type);
+    service_process_write(&service, frame, size, 0);
+    response = parse_service_reply(&service);
+    assert(response.status == COMMAND_OK && response.size == 3);
+    assert(response.data[0] == 0 && response.data[1] == 0xe6 && response.data[2] == 0x09);
+    consume_reply(&service);
+
+    sensor_type[0] = 1;
+    size = proto_write(frame, sizeof frame, 0xf0, 0x03, sensor_type, sizeof sensor_type);
+    service_process_write(&service, frame, size, 0);
+    response = parse_service_reply(&service);
+    assert(response.status == COMMAND_OK && response.size == 2);
+    assert(response.data[0] == 1 && response.data[1] == 42);
     consume_reply(&service);
 
     frame[size - 1] = 0;

@@ -53,7 +53,7 @@ make
 & "D:\conda\python.exe" tools\jetson_command_client.py echo 0x30 0xFF 0x0A
 ```
 
-脚本可作为模块导入，命名函数例如 `getArmCortexTemp()`、`getLightLevel()`、`getDht11Temp()`、`getDeviceIdentity()` 和 `echo(payload)`。没有业务载荷的传感器函数不需要位置参数；如需指定 Jetson 或 I2C 设备，可传输参数，例如 `getArmCortexTemp(host="jetson", device="/dev/i2c-7")`。原始命令可使用 `raw CMDID SUBID [BYTE ...]`。
+脚本可作为模块导入，命名函数例如 `getArmCortexTemp()`、`getLightLevel()`、`getDht11Temp()`、`getDeviceIdentity()` 和 `echo(payload)`。`getArmCortexTemp()` 和 `getLightLevel()` 分别发送 `F0/03` 的 DATA=`00`、DATA=`01`，并校验读帧 RESULT 的首字节 type。函数不需要位置参数；如需指定 Jetson 或 I2C 设备，可传输参数，例如 `getArmCortexTemp(host="jetson", device="/dev/i2c-7")`。原始命令可使用 `raw CMDID SUBID [BYTE ...]`。
 
 ## STM32 从机
 

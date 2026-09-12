@@ -13,7 +13,7 @@ Jetson Orin Nano 是 I2C 主机，STM32F407 I2C1 是 7 bit 地址 `0x42` 的从�
 
 STM32 收到写事务 STOP 后在主循环处理命令。响应尚未准备好时，任何读操作返回无 RESULT 的 `STATUS=0x06` BUSY 帧；Jetson 每 1 ms 只重试读操作，最长等待 1000 ms，绝不重发可能已执行的写命令。最终响应被完整读取后从机清除待响应状态。有效的新写命令可以覆盖未读旧响应；无效写帧不能覆盖旧响应。
 
-当前命令表除 `CMDID=0x01`、`SUBCMD=0x00` 的回显外，还提供 `CMDID=0xF0` 命令组：`SUBCMD=0x00` 忽略请求载荷，固定返回 18 字节 ASCII `JETSON-STM32-COLLA`；`SUBCMD=0x01` 从 DHT11（PG9）读取温度，成功时 RESULT 为 1 字节无符号整数摄氏温度；`SUBCMD=0x02` 读取 STM32 内部温度传感器（ADC1 通道 16），RESULT 为 2 字节小端有符号整数，单位 `0.01°C`；`SUBCMD=0x03` 读取板载 LS1 光敏传感器（PF7/ADC3 通道 5），RESULT 为 1 字节相对光照强度 `0~100`。传感器读取失败或 DHT11 校验失败时返回 `STATUS=0x04` 且无 RESULT。
+当前命令表除 `CMDID=0x01`、`SUBCMD=0x00` 的回显外，还提供 `CMDID=0xF0` 命令组：`SUBCMD=0x00` 忽略请求载荷，固定返回 18 字节 ASCII `JETSON-STM32-COLLA`；`SUBCMD=0x01` 从 DHT11（PG9）读取温度，成功时 RESULT 为 1 字节无符号整数摄氏温度；`SUBCMD=0x03` 为板载传感器读取命令，写帧 DATA 必须为一个 `type` 字节：`00` 读取 STM32 内部温度传感器（ADC1 通道 16），成功 RESULT 为 `00 TEMP_LO TEMP_HI`，温度是小端有符号整数、单位 `0.01°C`；`01` 读取 LS1 光敏传感器（PF7/ADC3 通道 5），成功 RESULT 为 `01 LEVEL`，`LEVEL` 是 `0~100` 相对光照强度。缺少 type 或 type 不为 `00`/`01` 时返回 `STATUS=0x03`；传感器读取失败或 DHT11 校验失败时返回 `STATUS=0x04` 且无 RESULT。
 
 v0.2：读返回帧头改为 `0x60`，主从两端必须一起更新；读操作的 MOSI 占位字节仍为 `0xFF`，帧长度和其余字段不变。
 

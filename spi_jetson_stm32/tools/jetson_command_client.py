@@ -85,19 +85,19 @@ def getDht11Temp(**transport) -> int:
 
 
 def getArmCortexTemp(**transport) -> float:
-    """Return STM32 internal sensor temperature in Celsius from F0/02."""
-    data = sendCommand(0xF0, 0x02, **transport).data
-    if len(data) != 2:
-        raise CommandError(f"F0/02 expected 2 bytes, got {len(data)}")
-    return int.from_bytes(data, byteorder="little", signed=True) / 100.0
+    """Return STM32 internal sensor temperature in Celsius from F0/03 type 0."""
+    data = sendCommand(0xF0, 0x03, [0], **transport).data
+    if len(data) != 3 or data[0] != 0:
+        raise CommandError(f"F0/03 type 0 expected [00 TEMP_LO TEMP_HI], got {data.hex(' ')}")
+    return int.from_bytes(data[1:], byteorder="little", signed=True) / 100.0
 
 
 def getLightLevel(**transport) -> int:
-    """Return board LS1 relative light level (0..100) from F0/03."""
-    data = sendCommand(0xF0, 0x03, **transport).data
-    if len(data) != 1:
-        raise CommandError(f"F0/03 expected 1 byte, got {len(data)}")
-    return data[0]
+    """Return board LS1 relative light level (0..100) from F0/03 type 1."""
+    data = sendCommand(0xF0, 0x03, [1], **transport).data
+    if len(data) != 2 or data[0] != 1:
+        raise CommandError(f"F0/03 type 1 expected [01 LEVEL], got {data.hex(' ')}")
+    return data[1]
 
 
 def echo(payload: Iterable[int], **transport) -> bytes:
