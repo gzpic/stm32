@@ -94,6 +94,10 @@ void SysTick_Handler(void)
 
 现有 I2C1 中断优先级为 1，数值比 `configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY=5` 更高。因此：
 
+- Cortex-M 的 NVIC 数值越小，硬件优先级越高。FreeRTOS 在内核临界区把 `BASEPRI` 设为 `configMAX_SYSCALL_INTERRUPT_PRIORITY=0x50`，临时屏蔽库优先级 5--15 的 ISR；库优先级 0--4 仍可抢占内核。
+- `xTaskNotifyFromISR()`、队列和信号量会修改 FreeRTOS 内核对象。若优先级 0--4 的 ISR 在内核临界区抢占并调用这些 API，就可能与尚未完成的内核更新并发访问同一对象，导致链表或调度状态损坏。因此它们被明确禁止调用任何 FreeRTOS API。
+- 库优先级 5--15 会在内核临界区被 `BASEPRI` 延后，离开临界区后再执行，所以可安全调用 `FromISR` API。I2C 改为 6 后仍高于 SysTick/PendSV 的 15，同时满足这个条件。
+- 这条规则只针对 NVIC 中断优先级；FreeRTOS 的任务优先级方向相反，任务数值越大越优先。
 - 阶段 1、2 中，I2C ISR 不调用任何 FreeRTOS API，可保持优先级 1。
 - 阶段 4 改用 `xTaskNotifyFromISR()` 后，I2C1 事件和错误中断必须改为库优先级 5--15，例如 6。
 - 优先级 0--4 的 ISR 不得调用 `xQueueSendFromISR()`、`xTaskNotifyFromISR()` 等 FreeRTOS API。
