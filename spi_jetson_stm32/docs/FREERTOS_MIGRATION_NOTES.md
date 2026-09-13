@@ -102,6 +102,24 @@ void SysTick_Handler(void)
 - 优先级 0--4 的 ISR 不得调用 `xQueueSendFromISR()`、`xTaskNotifyFromISR()` 等 FreeRTOS API。
 - 所有 `FromISR` 调用必须检查 `xHigherPriorityTaskWoken`，并以 `portYIELD_FROM_ISR()` 结束。
 
+## 裸机代码迁入 RTOS 的约束
+
+裸机代码默认只有主循环和中断两个执行上下文；迁入 RTOS 后，任务与 ISR 会并发访问状态和外设。以下约束适用于本项目每一次业务迁移。
+
+| 事项 | 迁移要求 |
+|---|---|
+| 主循环 | 不保留业务型 `while (1)`。将明确职责移入任务；当前 `i2c_slave_poll()` 先进入 I2C 服务任务。 |
+| ISR 职责 | ISR 只做硬件收发、保存必要状态、置标志或通知任务。禁止在 ISR 中执行传感器读取、CRC 大量计算、阻塞等待或延时。 |
+| 阻塞延时 | 毫秒级任务等待使用 `vTaskDelay()`、任务通知、队列或信号量。DHT11 的微秒级波形仍可使用短精确延时，但只能在任务上下文执行。 |
+| 共享数据 | `volatile` 不能替代同步。ISR/任务共享多字段状态时使用任务通知、队列或短临界区；任务之间共享资源时由唯一所有者管理或使用互斥锁。 |
+| 外设所有权 | I2C1 状态机由 I2C 服务任务拥有，ISR 仅驱动字节收发。ADC、DHT11 GPIO 等资源后续也应有唯一任务或受控接口。 |
+| 中断 API | 高优先级 ISR（库优先级 0--4）禁止调用 FreeRTOS API。使用 `FromISR` API 前，必须先将对应 IRQ 调整到 5--15。 |
+| SysTick | FreeRTOS 与 HAL 共用 SysTick 时，Handler 必须同时调用 `HAL_IncTick()` 和 `xPortSysTickHandler()`，且两者保持 1 kHz。 |
+| 任务资源 | 每新增任务都记录优先级、栈大小、高水位和堆影响；迁移后重新测量，不能沿用裸机的内存假设。 |
+| 协议回归 | RTOS 对 Jetson 不可见。BUSY、写帧只执行一次、CRC、type 回显和 256 字节上限必须保持并回归测试。 |
+
+迁移顺序固定为：先让 RTOS 承载原单执行流，再引入 ISR 通知，最后才拆分传感器和诊断任务；不得同时重构协议、ISR 和传感器逻辑。
+
 ## 阶段记录
 
 ### 阶段 0：调研与基线
