@@ -1,5 +1,6 @@
 #include "SYSTEM/sys/sys.h"
 #include "SYSTEM/delay/delay.h"
+#include "./BSP/LED/led.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "dht11.h"
@@ -24,6 +25,7 @@ static void heartbeat_task(void *argument)
     (void)argument;
     while (1) {
         ++freertos_heartbeat_count;
+        LED0_TOGGLE();
         freertos_heartbeat_stack_remaining = uxTaskGetStackHighWaterMark2(NULL);
         freertos_minimum_free_heap = xPortGetMinimumEverFreeHeapSize();
         vTaskDelay(pdMS_TO_TICKS(1000));
@@ -46,6 +48,7 @@ int main(void)
     if (HAL_Init() != HAL_OK) while (1) {}
     if (sys_stm32_clock_init(336, 8, 2, 7) != 0) while (1) {}
     delay_init(168);
+    led_init();
     dht11_init();
     sensors_init();
     i2c_slave_init();
