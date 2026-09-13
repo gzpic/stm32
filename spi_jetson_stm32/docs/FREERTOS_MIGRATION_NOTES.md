@@ -103,6 +103,21 @@ void SysTick_Handler(void)
 - 优先级 0--4 的 ISR 不得调用 `xQueueSendFromISR()`、`xTaskNotifyFromISR()` 等 FreeRTOS API。
 - 所有 `FromISR` 调用必须检查 `xHigherPriorityTaskWoken`，并以 `portYIELD_FROM_ISR()` 结束。
 
+## ISR 到任务的同步方式
+
+| 方式 | 适合场景 | 本项目是否选用 |
+|---|---|---|
+| 直接任务通知 | 一个明确 ISR 对应一个明确任务；仅唤醒或传递少量状态、计数 | 选用。通知值存于任务控制块，无额外对象；I2C ISR 是唯一生产者，命令任务是唯一消费者。 |
+| 二值信号量 | 只表示“发生/未发生”，并希望使用独立同步对象 | 不选。功能可由直接通知覆盖，但多占用一个内核对象。 |
+| 计数信号量 | 每次事件都必须累计，生产速度可能超过消费者 | 当前不选。协议只允许一个待处理命令帧，`ready` 为真时后续写入会被拒绝或计为 dropped。 |
+| 队列 | ISR 要把事件数据或结构体复制给任务 | 当前不选。完整帧已放入 `command_rx`，再复制到队列只会增加 RAM 与复制开销。 |
+| 事件组 | 任务等待多个独立状态位的组合 | 当前不选。其 ISR 设置通常经 Timer Service 任务延后处理，且当前未启用软件定时器。 |
+| 流缓冲区/消息缓冲区 | ISR 产生连续字节流或变长消息 | 当前不选。适合 UART/DMA；I2C 已有帧接收缓冲区。 |
+
+阶段 4 的确定设计如下：I2C ISR 接收字节，收到写事务 `STOP` 后发布 `command_buffer.ready`，调用 `vTaskNotifyGiveFromISR()` 并按需 `portYIELD_FROM_ISR()`；命令任务阻塞在 `ulTaskNotifyTake(pdTRUE, portMAX_DELAY)`，被唤醒后执行 `i2c_slave_poll()` 完成 CRC、命令分发、传感器读取和响应组帧。禁止使用 SysTick 轮询 `ready`，以免增加 0--1 ms 延迟并耦合业务同步与系统时基。
+
+任务句柄必须在 I2C IRQ 启用前完成注册；调用 `FromISR` 前，I2C EV/ER 优先级必须由 1 调整为 6。若将来允许多个待处理命令帧，需要改为多缓冲区加帧描述符队列，或采用计数通知；不能只依赖当前单个 `ready` 标志。
+
 ## 裸机代码迁入 RTOS 的约束
 
 裸机代码默认只有主循环和中断两个执行上下文；迁入 RTOS 后，任务与 ISR 会并发访问状态和外设。以下约束适用于本项目每一次业务迁移。
