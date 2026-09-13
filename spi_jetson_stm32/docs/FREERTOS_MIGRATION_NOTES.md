@@ -209,6 +209,21 @@ void SysTick_Handler(void)
 - 调试器 RAM 观测：断言行号、堆耗尽计数和栈溢出计数均为 0；心跳计数持续增长；心跳和 I2C 任务栈高水位、最小历史剩余堆均为正值。
 - 本记录不替代 10 分钟稳定性、HAL tick 连续观测、BUSY 重试和 256 字节帧回归。
 
+## 代码上下库与回归流程
+
+“上库”指将当前功能分支推送到 `origin`；“下库”指从远端重新取得该分支的同一提交并在干净构建目录复现。Jetson 是 I2C 主机和测试执行端，不是 STM32 固件代码库。
+
+1. 每个阶段只包含一个可说明的改动主题。先运行 `git status --short`、`git diff --check` 和 Keil 全量重建；构建或检查失败时不得提交。
+2. 提交后记录提交号、变更范围、Keil 的 Code/RO/RW/ZI、错误和警告数量。禁止烧录工作区未提交的源文件。
+3. 上库前确认分支和最近提交：`git branch --show-current`、`git log --oneline -1`；再执行 `git push -u origin feature/freertos-port`。推送后以 `git ls-remote origin refs/heads/feature/freertos-port` 核对远端提交号。
+4. 下库回归使用新的工作目录或新的 worktree：获取远端分支后，使用 `git rev-parse HEAD` 与上一步提交号逐字一致。执行 `python tools/generate_freertos_keil.py` 后，以 Keil `-r` 全量重建 `stm32/freertos_i2c.uvprojx`，禁止复用旧 `OutputFreeRTOS` 对象文件。
+5. 从下库构建产生的 `stm32/OutputFreeRTOS/freertos_i2c.axf` 下载到 STM32；记录探针编号、AXF 对应提交号和下载时间。下载后复位，先检查调度器诊断变量，再进行 Jetson I2C 回归。
+6. Jetson 回归至少覆盖身份 `F0/00`、内部温度 `F0/03 00`、光照 `F0/03 01`、含特殊字节的回显，以及非法 type。长稳阶段额外覆盖 BUSY 重试、256 字节帧和 10 分钟连续请求。
+7. Jetson 上的 `/home/chen/stm32-spi-test/build/i2c_request` 是测试工具。每次回归记录其路径和版本来源；若其实现更新，必须作为独立提交和独立回归项，不能与 STM32 FreeRTOS 改动混在同一次结论中。
+8. 回归失败时记录首个失败命令、原始响应/超时、调试器诊断和当前提交号。修复必须形成新提交，随后从“下库构建”开始重跑，不能仅在本地增量编译后宣布通过。
+
+上库和下库均通过，且对应阶段的硬件验收通过后，才允许合并到主分支。若只完成编译、只完成本地烧录，或无法证明 AXF 对应已推送提交，则该阶段状态只能是“部分完成”。
+
 ## 每阶段必须记录
 
 - 修改的文件和 Keil 分组。
