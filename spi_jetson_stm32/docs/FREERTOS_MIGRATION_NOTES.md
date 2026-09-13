@@ -47,9 +47,9 @@ stm32
 
 `FreeRTOSConfig.h` 由本项目创建，不能直接使用模板文件的时钟、堆和功能开关。
 
-## 最小配置草案
+## 最小配置
 
-以下是第一阶段的目标值，尚未写入工程：
+以下值已写入 `stm32/FreeRTOSConfig.h`：
 
 | 宏 | 目标值 | 原因 |
 |---|---:|---|
@@ -71,19 +71,16 @@ stm32
 
 ## 异常入口配置
 
-FreeRTOS 启动调度器后需要接管 SVC、PendSV 和 SysTick。现有 `vendor/hal_example/User/stm32f4xx_it.c` 必须改为：
+FreeRTOS 启动调度器后需要接管 SVC、PendSV 和 SysTick。`portable/GCC/ARM_CM4F/port.c` 会在启动时检查 SVC 与 PendSV 向量表项是否直接指向端口处理函数，因此配置必须将端口符号映射为 CMSIS 异常名：
 
 ```c
-void SVC_Handler(void)
-{
-    vPortSVCHandler();
-}
+#define vPortSVCHandler SVC_Handler
+#define xPortPendSVHandler PendSV_Handler
+```
 
-void PendSV_Handler(void)
-{
-    xPortPendSVHandler();
-}
+`SVC_Handler` 和 `PendSV_Handler` 由 `port.c` 直接提供。SysTick 保留 STM32 文件中的包装，以同时维护 HAL 时基：
 
+```c
 void SysTick_Handler(void)
 {
     HAL_IncTick();
@@ -132,7 +129,7 @@ void SysTick_Handler(void)
 
 ### 阶段 1：内核编译，不启动调度器
 
-状态：待执行。
+状态：完成。内核、M4F 端口、`heap_4.c` 和配置已引入，并通过 AC6 完整构建。
 
 1. 将内核文件和候选端口加入新的 Keil 分组。
 2. 新增 `FreeRTOSConfig.h`，采用本笔记的最小配置。
@@ -143,7 +140,7 @@ void SysTick_Handler(void)
 
 ### 阶段 2：最小调度器
 
-状态：待执行。
+状态：部分完成。最小调度器、心跳和异常入口已在硬件上验证；HAL tick 10 秒窗口、任务状态切换和持续运行仍待单独验收。
 
 1. 修改 SVC、PendSV、SysTick 异常入口。
 2. 创建一个低优先级心跳任务，仅递增调试计数。
@@ -175,7 +172,7 @@ void SysTick_Handler(void)
 
 ### 阶段 3：I2C 轮询迁入任务
 
-状态：待执行。
+状态：部分完成。I2C 轮询已在服务任务中运行，并完成一次 Jetson 协议回归；持续运行与 BUSY 重试回归仍待单独验收。
 
 1. 创建 I2C 服务任务，替代 `main()` 中的 `while (1)`。
 2. 初期任务持续调用 `i2c_slave_poll()`，不从 ISR 调用 FreeRTOS API。
@@ -202,6 +199,15 @@ void SysTick_Handler(void)
 3. 按实测高水位调整每个任务栈和 `configTOTAL_HEAP_SIZE`。
 
 验收：传感器命令、256 字节帧、连续请求、STM32 复位恢复和长时间运行测试通过。
+
+## 2026-09-13 首次硬件回归
+
+- Keil 全量重建 `stm32/freertos_i2c.uvprojx`：`0 Error(s), 27 Warning(s)`；警告均来自已有 HAL/厂商源码。镜像尺寸为 Code=19496、RO-data=680、RW-data=20、ZI-data=18972。
+- 首次下载后 Jetson 写帧超时。读取诊断 RAM 发现 `configASSERT` 行号为 342；原因是 SVC/PendSV 使用了包装函数，未满足 M4F 端口对向量表直接指向端口函数的自检。
+- 改为配置宏映射后，链接映射表显示 `SVC_Handler`、`PendSV_Handler` 均由 `port.o` 提供；重新构建、下载和复位后恢复响应。
+- Jetson 实测：`F0/00` 返回 `JETSON-STM32-COLLA`；`F0/03 00` 返回内部温度 `33.27 C`；`F0/03 01` 返回光照 `56`；`01/00` 回显 `30 FF 0A`；`F0/03 02` 返回 `status=3 data[0]`。
+- 调试器 RAM 观测：断言行号、堆耗尽计数和栈溢出计数均为 0；心跳计数持续增长；心跳和 I2C 任务栈高水位、最小历史剩余堆均为正值。
+- 本记录不替代 10 分钟稳定性、HAL tick 连续观测、BUSY 重试和 256 字节帧回归。
 
 ## 每阶段必须记录
 
