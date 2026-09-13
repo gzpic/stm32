@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include "freertos_hooks.h"
 
+/* The startup vector table references these CMSIS exception names directly. */
+#define vPortSVCHandler                         SVC_Handler
+#define xPortPendSVHandler                      PendSV_Handler
+
 #define configCPU_CLOCK_HZ                         ( 168000000UL )
 #define configTICK_RATE_HZ                          ( 1000U )
 #define configUSE_PREEMPTION                        1

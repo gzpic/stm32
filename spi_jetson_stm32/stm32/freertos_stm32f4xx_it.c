@@ -25,8 +25,6 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-void vPortSVCHandler(void);
-void xPortPendSVHandler(void);
 void xPortSysTickHandler(void);
 /** @addtogroup STM32F4xx_HAL_Examples
   * @{
@@ -114,11 +112,6 @@ void UsageFault_Handler(void)
   * @param  None
   * @retval None
   */
-void SVC_Handler(void)
-{
-  vPortSVCHandler();
-}
-
 /**
   * @brief  This function handles Debug Monitor exception.
   * @param  None
@@ -133,11 +126,6 @@ void DebugMon_Handler(void)
   * @param  None
   * @retval None
   */
-void PendSV_Handler(void)
-{
-  xPortPendSVHandler();
-}
-
 /**
   * @brief  This function handles SysTick Handler.
   * @param  None
